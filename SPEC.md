@@ -170,6 +170,452 @@ environment, not because this document forbids it:
 
 ## Product spec
 
-> The full product specification (roles, modules, phases, UI direction, etc.)
-> from the original build spec belongs below this line. Paste it here so the
-> safety gates above govern the entire document.
+Build a full AI-first Multifamily Property Management SaaS platform using:
+
+Frontend:
+- Next.js (App Router)
+- React
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+- Lucide icons
+- Recharts
+
+Backend:
+- Supabase Postgres
+- Supabase Auth
+- Supabase Storage
+- Supabase Row Level Security (RLS)
+- Supabase Realtime
+- Supabase Edge Functions
+
+Hosting:
+- Vercel
+
+Email:
+- Resend
+
+AI:
+- Placeholder AI service layer (OpenAI/Claude pluggable)
+
+--------------------------------------------------
+CORE PRODUCT VISION
+--------------------------------------------------
+
+Build a complete all-in-one operating system for multifamily property management.
+
+This platform must unify:
+- Property Management (PMS)
+- Leasing CRM
+- Maintenance & Work Orders
+- Vendor Management
+- Tenant Portal
+- Vendor Portal
+- Owner Portal
+- Communication Hub
+- Automations Engine
+- AI Operational Layer
+- Reporting & Analytics
+
+Positioning:
+"The AI Operating System for Multifamily Property Management"
+
+--------------------------------------------------
+MULTI-TENANT ARCHITECTURE
+--------------------------------------------------
+
+- Every record belongs to an organization (organization_id required)
+- Use Supabase Auth
+- Use strict Row Level Security (RLS)
+- No cross-organization access under any circumstance
+
+--------------------------------------------------
+USER ROLES
+--------------------------------------------------
+
+- SUPER_ADMIN
+- OWNER
+- REGIONAL_MANAGER
+- PROPERTY_MANAGER
+- LEASING_AGENT
+- MAINTENANCE_MANAGER
+- MAINTENANCE_TECH
+- VENDOR_ADMIN
+- VENDOR_TECH
+- TENANT
+- INVESTOR
+- ACCOUNTING
+
+--------------------------------------------------
+GLOBAL UI REQUIREMENTS
+--------------------------------------------------
+
+- Modern SaaS UI (Linear + HubSpot feel)
+- Left sidebar navigation
+- Top bar with search + notifications
+- Dashboard cards
+- Data tables (filters, sorting, pagination)
+- Status badges
+- Kanban boards
+- Slide-over panels
+- Modals
+- Mobile responsive
+- Loading + empty + error states
+
+--------------------------------------------------
+CORE NAVIGATION
+--------------------------------------------------
+
+Dashboard
+Properties
+Buildings
+Units
+Tenants
+Leases
+Maintenance
+Work Orders
+Vendors
+Leasing CRM
+Applications
+Communications
+Payments
+Reports
+Automations
+Documents
+Inspections
+Amenities
+Settings
+
+--------------------------------------------------
+CORE DATABASE TABLES
+--------------------------------------------------
+
+organizations
+users
+user_roles
+properties
+buildings
+units
+tenants
+leases
+lease_documents
+rent_charges
+payments
+maintenance_requests
+work_orders
+work_order_photos
+vendors
+vendor_contacts
+vendor_documents
+vendor_service_areas
+vendor_invoices
+vendor_ratings
+conversations
+conversation_messages
+leads
+tours
+applications
+tasks
+automations
+automation_logs
+announcements
+amenities
+amenity_reservations
+inspections
+inspection_items
+documents
+ai_logs
+notifications
+audit_logs
+settings
+
+--------------------------------------------------
+MODULES
+--------------------------------------------------
+
+### PROPERTY / BUILDING / UNIT MANAGEMENT
+(full schemas exactly as previously defined)
+
+### TENANT PORTAL
+- Rent
+- Maintenance
+- Messaging
+- Documents
+- Amenities
+- AI assistant
+
+### MAINTENANCE SYSTEM
+- Requests
+- Work orders
+- SLA tracking
+- Vendor assignment
+- Photos
+- Status tracking
+
+### VENDOR PORTAL
+- Job acceptance
+- Compliance tracking
+- Invoicing
+- Performance scoring
+
+### LEASING CRM
+- Lead pipeline
+- Tours
+- Applications
+- Lease conversion
+
+### COMMUNICATION HUB
+- Unified inbox
+- Email + portal messaging
+- AI summaries + replies
+
+### PAYMENTS (LITE FIRST)
+- Ledger
+- Charges
+- Payments
+- Statements
+
+### OWNER PORTAL
+- Portfolio view
+- Reports
+- AI summaries
+
+### REPORTING
+- Occupancy
+- Rent roll
+- Maintenance
+- Vendor performance
+- Leasing funnel
+
+### AUTOMATION ENGINE
+- Trigger → Condition → Action system
+
+### DOCUMENT MANAGEMENT
+- Supabase storage
+- Structured categories
+
+### INSPECTIONS
+- Move-in/out
+- Checklists
+- Photos
+
+### AMENITIES
+- Reservations
+- Rules
+
+--------------------------------------------------
+AI LAYER (REQUIRED)
+--------------------------------------------------
+
+AI must support:
+- Maintenance triage
+- Leasing assistant
+- Message drafting
+- Summaries
+- Reporting insights
+- Vendor suggestions
+
+AI must NEVER act without permission controls.
+
+--------------------------------------------------
+CRITICAL SAFETY ARCHITECTURE (MANDATORY)
+--------------------------------------------------
+
+These are NON-NEGOTIABLE system constraints.
+
+--------------------------------------------------
+1. ROW LEVEL SECURITY (RLS) GATE
+--------------------------------------------------
+
+- ALL tables must enforce organization-level isolation
+- ALL queries must respect org boundaries
+
+REQUIREMENTS:
+- organization_id on all core tables
+- strict RLS policies per role
+- tenants → only their data
+- vendors → only assigned jobs
+- owners → only owned properties
+
+CREATE:
+- SECURITY_REVIEW.md
+- RLS_TEST_PLAN.md
+
+TEST:
+- Cross-org access must fail
+- Unauthorized access must fail
+
+--------------------------------------------------
+2. AI / AUTOMATION CONTROL GATE
+--------------------------------------------------
+
+DEFAULT:
+- AI = OFF or DRAFT ONLY
+
+AI MODES:
+- disabled
+- draft_only
+- suggest_only
+- auto_with_approval
+- fully_automated
+
+RULES:
+- AI cannot send messages by default
+- AI cannot dispatch vendors
+- AI cannot modify financial data
+- AI cannot escalate issues automatically
+
+REQUIRE:
+Central control function:
+
+canRunAutomationAction(orgId, module, actionType)
+
+ALL AI + automations must pass through this check.
+
+LOG EVERYTHING:
+- ai_logs
+- automation_logs
+
+CREATE:
+- AI_AUTOMATION_SAFETY.md
+
+--------------------------------------------------
+3. EMAIL (RESEND) SAFETY GATE
+--------------------------------------------------
+
+DEFAULT:
+EMAIL_MODE = test
+
+REQUIRE:
+- Only send to approved test emails in dev
+- Block real recipients unless production mode enabled
+
+ENV:
+- EMAIL_MODE=test|production
+- APPROVED_TEST_EMAILS
+
+ADD:
+- rate limiting
+- duplicate prevention
+- logging
+
+CREATE:
+- EMAIL_SAFETY.md
+
+--------------------------------------------------
+4. PRODUCTION DEPLOYMENT GATE
+--------------------------------------------------
+
+REQUIRE:
+- Separate dev + production environments
+- Separate Supabase projects
+- Separate Resend keys
+
+NO:
+- No test data in prod
+- No auto migrations in prod
+
+CREATE:
+- PRODUCTION_CHECKLIST.md
+
+--------------------------------------------------
+DEVELOPMENT FREEDOM (IMPORTANT)
+--------------------------------------------------
+
+Claude Code SHOULD build autonomously for:
+
+- UI
+- CRUD
+- schema
+- dashboards
+- portals
+- components
+- dev migrations
+- test data
+
+DO NOT slow down dev.
+
+ONLY gate:
+- security
+- AI actions
+- email
+- production
+
+--------------------------------------------------
+BUILD PHASES
+--------------------------------------------------
+
+Phase 1:
+Auth, orgs, roles, properties, units, tenants
+
+Phase 2:
+Maintenance + work orders + vendors
+
+Phase 3:
+Tenant portal + communications
+
+Phase 4:
+Leasing CRM
+
+Phase 5:
+Payments + owner portal + reporting
+
+Phase 6:
+Automations + AI + inspections + amenities
+
+--------------------------------------------------
+IMPLEMENTATION OUTPUT REQUIREMENTS
+--------------------------------------------------
+
+Claude must generate:
+
+- Supabase SQL schema
+- RLS policies
+- TypeScript types
+- API helpers
+- UI components
+- Page layouts
+- Portal views
+- Dashboard pages
+- Automation engine
+- AI placeholders
+- Email utilities
+- Logging system
+
+--------------------------------------------------
+APP STRUCTURE
+--------------------------------------------------
+
+/app/dashboard
+/app/properties
+/app/buildings
+/app/units
+/app/tenants
+/app/leases
+/app/maintenance
+/app/work-orders
+/app/vendors
+/app/leasing
+/app/applications
+/app/communications
+/app/payments
+/app/reports
+/app/automations
+/app/documents
+/app/inspections
+/app/amenities
+/app/settings
+/app/tenant-portal
+/app/vendor-portal
+/app/owner-portal
+
+--------------------------------------------------
+FINAL GOAL
+--------------------------------------------------
+
+Build a scalable, AI-powered, modern PMS platform that:
+
+- replaces legacy systems (AppFolio, Yardi, etc.)
+- dominates in operations, automation, and communication
+- provides best-in-class tenant + vendor experience
+- is safe, secure, and production-ready
