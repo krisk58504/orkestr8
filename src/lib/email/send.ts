@@ -2,7 +2,8 @@
  * email/send.ts — the single outbound email chokepoint (SPEC Gate 3).
  *
  * sendEmail() runs every safety gate an outbound message must pass:
- *   1. duplicate-send suppression (anti-loop protection)
+ *   1. duplicate-send suppression — fails CLOSED on unverifiable (an
+ *      unreadable email_log blocks the send rather than letting it through)
  *   2. test-mode recipient allowlisting
  *   3. test-mode-only guard (the wired send path is authorized for test mode
  *      only — see EMAIL_SAFETY.md section 5)
@@ -15,7 +16,7 @@
 import "server-only";
 import { Resend } from "resend";
 import { getEmailMode, getFromAddress, isRecipientAllowed } from "./config";
-import { isDuplicateRecentSend, logEmailAttempt } from "./log";
+import { checkRecentDuplicate, logEmailAttempt } from "./log";
 import type { EmailSendResult, OutboundEmail } from "./types";
 
 /**
@@ -28,12 +29,24 @@ export async function sendEmail(
   const mode = getEmailMode();
 
   // --- Gate 1: duplicate-send suppression (automation-loop protection) ---
-  if (await isDuplicateRecentSend(email)) {
+  // Fails CLOSED (EMAIL_SAFETY.md §5 item 1): if the dedup check cannot
+  // verify uniqueness, the message is BLOCKED, not sent. An unsendable
+  // email is recoverable; a runaway loop to real recipients is not.
+  const dup = await checkRecentDuplicate(email);
+  if (dup.kind === "duplicate") {
     const reason =
       "Suppressed — an equivalent email was already sent recently.";
     await logEmailAttempt(email, mode, "suppressed", reason);
     return { delivered: false, status: "suppressed", mode, reason };
   }
+  if (dup.kind === "unverifiable") {
+    const reason =
+      "Blocked — duplicate-suppression check could not verify this is " +
+      `not a replay; failing closed. (${dup.error})`;
+    await logEmailAttempt(email, mode, "blocked", reason);
+    return { delivered: false, status: "blocked", mode, reason };
+  }
+  // dup.kind === "unique" — proceed.
 
   // --- Gate 2: test-mode recipient allowlist ---
   if (!isRecipientAllowed(email.to)) {

@@ -6,7 +6,7 @@
  * EMAIL_SAFETY.md.
  */
 export { getEmailMode, isRecipientAllowed } from "./config";
-export { logEmailAttempt, isDuplicateRecentSend } from "./log";
+export { logEmailAttempt, checkRecentDuplicate } from "./log";
 export { sendEmail } from "./send";
 export {
   EMAIL_TEMPLATE,
@@ -23,6 +23,7 @@ export type {
   VendorInvoiceSubmittedData,
 } from "./templates";
 export type {
+  DuplicateCheck,
   EmailContent,
   EmailMode,
   EmailSendResult,

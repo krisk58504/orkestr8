@@ -61,28 +61,41 @@ dev/test `RESEND_API_KEY` from `.env.local`. `sendEmail()` gate order:
 
 Recorded 2026-05-19 as a precondition of the test-mode wiring:
 
-1. **`isDuplicateRecentSend()` must fail _closed_.** It currently fails open —
-   if `email_log` cannot be read it returns `false` (no suppression). Before
-   production it must fail closed (treat an unreadable log as a duplicate, or
-   otherwise refuse to send) so a logging outage cannot unleash an automation
-   loop.
+1. **Dedup check must fail _closed_.** ✅ **RESOLVED 2026-05-19.** The dedup
+   helper has been renamed `checkRecentDuplicate()` and now returns a
+   discriminated union — `unique` / `duplicate` / `unverifiable` — rather
+   than a bare boolean. Any exception inside the function, and any non-null
+   `error` field on the supabase-js query response (which the SDK surfaces
+   without throwing — the original silent fail-open path), now collapse to
+   `unverifiable`. `sendEmail()` treats `unverifiable` as a **block**: the
+   message is logged with `status='blocked'` and the reason
+   `"Blocked — duplicate-suppression check could not verify this is not a
+   replay; failing closed."` and is NOT handed to Resend. An unsendable email
+   is recoverable; a runaway loop to real recipients is not. Verified by
+   `scripts/test-email.ts` cases T3 (genuine duplicate → `suppressed`) and
+   T4 (forced unverifiable via `EMAIL_DEDUP_FORCE_FAIL=1` test seam →
+   `blocked`).
 2. **The gate assumes a single recipient.** `sendEmail()` / `isRecipientAllowed`
    check exactly one address (`email.to`). Any future `cc`/`bcc`/multi-recipient
    sending **must re-gate every individual address** through the allowlist —
    adding recipients must not bypass the allowlist.
-3. **Confirm `queued`/`sent`/`failed` logging is correct post-send.** Verify on
-   real sends that `sent` is logged only after Resend accepts the message,
-   `failed` is logged on provider error, and no stale `queued` row is written.
+3. **Confirm `queued`/`sent`/`failed` logging is correct post-send.** Verified
+   2026-05-19 by `scripts/test-email.ts`: T1 (allowlisted send) logs `sent`
+   with the Resend message id on `email_log.payload` only after the provider
+   responds — no pre-emptive `queued`; T2/T3/T4 log `blocked`/`suppressed`
+   without ever calling Resend.
 
 ## 6. Before enabling production email
 
 - [x] `sendEmail()` chokepoint implemented with allowlist enforcement.
 - [x] Outbound attempts logged to `email_log` (sent/failed/blocked/suppressed).
-- [x] Duplicate-send protection in place (`isDuplicateRecentSend()`).
+- [x] Duplicate-send protection in place (`checkRecentDuplicate()`).
 - [x] **Send path wired:** `deliverViaResend()` implemented and called from
       `sendEmail()` — for `test` mode only.
 - [x] `resend` package installed.
-- [ ] **Section 5 item 1** — `isDuplicateRecentSend()` made fail-closed.
+- [x] **Section 5 item 1** — `checkRecentDuplicate()` fails CLOSED
+      (`unverifiable` → blocked). _(migration on logic only; verified
+      `scripts/test-email.ts` T3/T4, 2026-05-19)_
 - [ ] **Section 5 item 2** — multi-recipient re-gating addressed (or sending
       kept single-recipient).
 - [ ] Separate production Resend key configured by the operator (not committed).

@@ -48,3 +48,17 @@ export type EmailSendResult = {
   /** Human-readable explanation of the outcome. */
   reason: string;
 };
+
+/**
+ * Result of checkRecentDuplicate(). Fails CLOSED (EMAIL_SAFETY.md §5 item 1):
+ * - 'unique'       — no equivalent message in the window; safe to proceed.
+ * - 'duplicate'    — an equivalent message was sent recently; suppress.
+ * - 'unverifiable' — the email_log could not be read or returned an error.
+ *                    The caller MUST treat this as a block (do not send) —
+ *                    an unsendable email is recoverable; a runaway loop to
+ *                    real recipients is not.
+ */
+export type DuplicateCheck =
+  | { kind: "unique" }
+  | { kind: "duplicate" }
+  | { kind: "unverifiable"; error: string };
