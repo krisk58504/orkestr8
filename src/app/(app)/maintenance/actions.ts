@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/guards";
 import { isManager, isStaff } from "@/lib/auth/roles";
+import {
+  MAINTENANCE_CATEGORY_LABELS,
+  MAINTENANCE_PRIORITY_META,
+} from "@/lib/constants";
 import { logAudit } from "@/lib/data/audit";
+import { notifyMaintenanceRequestReceived } from "@/lib/email/notifications";
 import { createClient } from "@/lib/supabase/server";
 import {
   maintenanceRequestInputSchema,
@@ -67,6 +72,30 @@ export async function createMaintenanceRequest(
     entityId: data.id,
     metadata: { title: parsed.data.title },
   });
+
+  // Best-effort acknowledgement to the reporter (SPEC §3). Failures here
+  // MUST NOT roll back the DB write — the request is logged; an email
+  // going nowhere is recoverable, a runaway loop is not. sendEmail() runs
+  // Gate 3 (dedup fail-closed + allowlist + test-mode-only) before Resend.
+  try {
+    const { data: property } = await supabase
+      .from("properties")
+      .select("name")
+      .eq("id", parsed.data.property_id)
+      .maybeSingle();
+    await notifyMaintenanceRequestReceived({
+      organizationId: guard.context.organization.id,
+      requestId: data.id,
+      reporterEmail: guard.context.email,
+      reporterName: guard.context.profile.full_name ?? guard.context.email,
+      requestTitle: parsed.data.title,
+      propertyName: property?.name ?? "Property",
+      category: MAINTENANCE_CATEGORY_LABELS[parsed.data.category],
+      priority: MAINTENANCE_PRIORITY_META[parsed.data.priority].label,
+    });
+  } catch {
+    // best-effort — swallowed
+  }
 
   revalidatePath("/maintenance");
   revalidatePath("/dashboard");

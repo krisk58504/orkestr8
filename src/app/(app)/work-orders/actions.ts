@@ -3,7 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/guards";
 import { isManager, isStaff } from "@/lib/auth/roles";
+import {
+  MAINTENANCE_PRIORITY_META,
+  WORK_ORDER_STATUS_META,
+} from "@/lib/constants";
 import { logAudit } from "@/lib/data/audit";
+import { getOrgOwnerRecipient } from "@/lib/data/email-recipients";
+import {
+  notifyWorkOrderAssigned,
+  notifyWorkOrderStatusChanged,
+} from "@/lib/email/notifications";
 import { createClient } from "@/lib/supabase/server";
 import { collectFieldErrors } from "@/lib/validations/shared";
 import {
@@ -74,6 +83,42 @@ export async function createWorkOrder(
     metadata: { title: parsed.data.title },
   });
 
+  // Best-effort notify the assigned vendor (SPEC §3). Failures here MUST
+  // NOT roll back the DB write — the WO exists; the notification is
+  // recoverable. sendEmail() runs Gate 3 before Resend.
+  try {
+    if (
+      parsed.data.assignee_type === "vendor" &&
+      parsed.data.assigned_vendor_id
+    ) {
+      const [vendorRes, propertyRes] = await Promise.all([
+        supabase
+          .from("vendors")
+          .select("name, email")
+          .eq("id", parsed.data.assigned_vendor_id)
+          .maybeSingle(),
+        supabase
+          .from("properties")
+          .select("name")
+          .eq("id", parsed.data.property_id)
+          .maybeSingle(),
+      ]);
+      await notifyWorkOrderAssigned({
+        organizationId: guard.context.organization.id,
+        workOrderId: data.id,
+        vendorEmail: vendorRes.data?.email ?? null,
+        vendorName: vendorRes.data?.name ?? "Vendor",
+        workOrderTitle: parsed.data.title,
+        workOrderNumber: null,
+        propertyName: propertyRes.data?.name ?? "Property",
+        priority: MAINTENANCE_PRIORITY_META[parsed.data.priority].label,
+        scheduledFor: parsed.data.scheduled_for,
+      });
+    }
+  } catch {
+    // best-effort — swallowed
+  }
+
   revalidatePath("/work-orders");
   revalidatePath("/maintenance");
   revalidatePath("/dashboard");
@@ -103,7 +148,9 @@ export async function updateWorkOrder(
 
   const { data: existing } = await supabase
     .from("work_orders")
-    .select("accepted_at, completed_at")
+    .select(
+      "accepted_at, completed_at, status, assigned_vendor_id, assignee_type",
+    )
     .eq("id", id)
     .eq("organization_id", guard.context.organization.id)
     .maybeSingle();
@@ -153,6 +200,61 @@ export async function updateWorkOrder(
     entityId: id,
     metadata: { title: parsed.data.title },
   });
+
+  // Best-effort notifications (SPEC §3). Two distinct events may fire from
+  // one UPDATE — they have distinct templates so dedup does not collapse
+  // them: workOrderAssigned (new vendor) and workOrderStatusChanged.
+  // Failures MUST NOT roll back the DB write.
+  try {
+    const statusChanged =
+      existing != null && existing.status !== parsed.data.status;
+    const newlyAssignedVendor =
+      parsed.data.assignee_type === "vendor" &&
+      parsed.data.assigned_vendor_id != null &&
+      existing?.assigned_vendor_id !== parsed.data.assigned_vendor_id;
+
+    if (newlyAssignedVendor && parsed.data.assigned_vendor_id) {
+      const [vendorRes, propertyRes] = await Promise.all([
+        supabase
+          .from("vendors")
+          .select("name, email")
+          .eq("id", parsed.data.assigned_vendor_id)
+          .maybeSingle(),
+        supabase
+          .from("properties")
+          .select("name")
+          .eq("id", parsed.data.property_id)
+          .maybeSingle(),
+      ]);
+      await notifyWorkOrderAssigned({
+        organizationId: guard.context.organization.id,
+        workOrderId: id,
+        vendorEmail: vendorRes.data?.email ?? null,
+        vendorName: vendorRes.data?.name ?? "Vendor",
+        workOrderTitle: parsed.data.title,
+        workOrderNumber: null,
+        propertyName: propertyRes.data?.name ?? "Property",
+        priority: MAINTENANCE_PRIORITY_META[parsed.data.priority].label,
+        scheduledFor: parsed.data.scheduled_for,
+      });
+    }
+
+    if (statusChanged) {
+      const owner = await getOrgOwnerRecipient(guard.context.organization.id);
+      await notifyWorkOrderStatusChanged({
+        organizationId: guard.context.organization.id,
+        workOrderId: id,
+        recipientEmail: owner?.email ?? null,
+        recipientName: owner?.name ?? "Team",
+        workOrderTitle: parsed.data.title,
+        workOrderNumber: null,
+        newStatus: WORK_ORDER_STATUS_META[parsed.data.status].label,
+        changedBy: guard.context.profile.full_name ?? guard.context.email,
+      });
+    }
+  } catch {
+    // best-effort — swallowed
+  }
 
   revalidatePath("/work-orders");
   revalidatePath(`/work-orders/${id}`);

@@ -13,10 +13,15 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/guards";
 import { isVendorUser } from "@/lib/auth/roles";
-import type { SessionContext } from "@/lib/types/app";
 import { logAudit } from "@/lib/data/audit";
+import { getOrgOwnerRecipient } from "@/lib/data/email-recipients";
+import {
+  notifyVendorInvoiceSubmitted,
+  notifyWorkOrderStatusChanged,
+} from "@/lib/email/notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import type { SessionContext } from "@/lib/types/app";
 import { collectFieldErrors } from "@/lib/validations/shared";
 import {
   vendorInvoiceInputSchema,
@@ -82,7 +87,7 @@ export async function acceptWorkOrder(id: string): Promise<ActionResult> {
   const supabase = await createClient();
   const { data: workOrder } = await supabase
     .from("work_orders")
-    .select("id, status, assigned_vendor_id, organization_id")
+    .select("id, status, assigned_vendor_id, organization_id, title")
     .eq("id", id)
     .maybeSingle();
 
@@ -113,6 +118,25 @@ export async function acceptWorkOrder(id: string): Promise<ActionResult> {
     metadata: { vendor_id: vendorId },
   });
 
+  // Best-effort notify the managing org (SPEC §3). Best-effort — never roll
+  // back the accept. Dedup keys on (recipient, template, work_order_id);
+  // back-to-back status changes on the same WO collapse to one email.
+  try {
+    const owner = await getOrgOwnerRecipient(workOrder.organization_id);
+    await notifyWorkOrderStatusChanged({
+      organizationId: workOrder.organization_id,
+      workOrderId: id,
+      recipientEmail: owner?.email ?? null,
+      recipientName: owner?.name ?? "Team",
+      workOrderTitle: workOrder.title,
+      workOrderNumber: null,
+      newStatus: "Accepted",
+      changedBy: context.profile.full_name ?? context.email,
+    });
+  } catch {
+    // best-effort
+  }
+
   revalidatePath("/vendor-portal");
   revalidatePath("/vendor-portal/work-orders");
   revalidatePath(`/vendor-portal/work-orders/${id}`);
@@ -134,7 +158,7 @@ export async function declineWorkOrder(id: string): Promise<ActionResult> {
   const supabase = await createClient();
   const { data: workOrder } = await supabase
     .from("work_orders")
-    .select("id, status, assigned_vendor_id, organization_id")
+    .select("id, status, assigned_vendor_id, organization_id, title")
     .eq("id", id)
     .maybeSingle();
 
@@ -171,6 +195,23 @@ export async function declineWorkOrder(id: string): Promise<ActionResult> {
     entityId: id,
     metadata: { vendor_id: vendorId },
   });
+
+  // Best-effort notify the managing org the job is back in the queue.
+  try {
+    const owner = await getOrgOwnerRecipient(workOrder.organization_id);
+    await notifyWorkOrderStatusChanged({
+      organizationId: workOrder.organization_id,
+      workOrderId: id,
+      recipientEmail: owner?.email ?? null,
+      recipientName: owner?.name ?? "Team",
+      workOrderTitle: workOrder.title,
+      workOrderNumber: null,
+      newStatus: "Open (declined by vendor)",
+      changedBy: context.profile.full_name ?? context.email,
+    });
+  } catch {
+    // best-effort
+  }
 
   revalidatePath("/vendor-portal");
   revalidatePath("/vendor-portal/work-orders");
@@ -209,7 +250,9 @@ export async function updateWorkOrderStatus(
   const supabase = await createClient();
   const { data: workOrder } = await supabase
     .from("work_orders")
-    .select("id, status, assigned_vendor_id, organization_id, notes, cost_actual")
+    .select(
+      "id, status, assigned_vendor_id, organization_id, notes, cost_actual, title",
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -277,6 +320,25 @@ export async function updateWorkOrderStatus(
     entityId: id,
     metadata: { vendor_id: vendorId, from: workOrder.status, to: status },
   });
+
+  // Best-effort notify the managing org of the status change. Dedup keys
+  // on (recipient, template, work_order_id) — back-to-back transitions on
+  // the same WO collapse to one outbound email within the dedup window.
+  try {
+    const owner = await getOrgOwnerRecipient(workOrder.organization_id);
+    await notifyWorkOrderStatusChanged({
+      organizationId: workOrder.organization_id,
+      workOrderId: id,
+      recipientEmail: owner?.email ?? null,
+      recipientName: owner?.name ?? "Team",
+      workOrderTitle: workOrder.title,
+      workOrderNumber: null,
+      newStatus: status === "in_progress" ? "In Progress" : "Completed",
+      changedBy: context.profile.full_name ?? context.email,
+    });
+  } catch {
+    // best-effort
+  }
 
   revalidatePath("/vendor-portal");
   revalidatePath("/vendor-portal/work-orders");
@@ -357,6 +419,41 @@ export async function createVendorInvoice(
     entityId: data.id,
     metadata: { vendor_id: vendorId, status: parsed.data.status },
   });
+
+  // Best-effort notify org managers of a newly-submitted invoice (SPEC §3).
+  // Drafts are not surfaced — only the moment the vendor submits.
+  try {
+    if (parsed.data.status === "submitted") {
+      const supabase = await createClient();
+      const [ownerLookup, vendorRes, workOrderRes] = await Promise.all([
+        getOrgOwnerRecipient(organizationId),
+        supabase
+          .from("vendors")
+          .select("name")
+          .eq("id", vendorId)
+          .maybeSingle(),
+        parsed.data.work_order_id
+          ? supabase
+              .from("work_orders")
+              .select("title")
+              .eq("id", parsed.data.work_order_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      await notifyVendorInvoiceSubmitted({
+        organizationId,
+        invoiceId: data.id,
+        recipientEmail: ownerLookup?.email ?? null,
+        recipientName: ownerLookup?.name ?? "Team",
+        vendorName: vendorRes.data?.name ?? "Vendor",
+        invoiceNumber: parsed.data.invoice_number ?? data.id,
+        amount: `$${(parsed.data.amount ?? 0).toLocaleString()}`,
+        workOrderTitle: workOrderRes.data?.title ?? null,
+      });
+    }
+  } catch {
+    // best-effort
+  }
 
   revalidatePath("/vendor-portal");
   revalidatePath("/vendor-portal/invoices");
@@ -441,6 +538,47 @@ export async function updateVendorInvoice(
     entityId: id,
     metadata: { vendor_id: vendorId, status: parsed.data.status },
   });
+
+  // Best-effort notify org managers when this UPDATE is the draft -> submitted
+  // transition (a vendor "submitting" their invoice). Same-status saves and
+  // other field edits do not fire the notification.
+  try {
+    if (
+      existing.status === "draft" &&
+      parsed.data.status === "submitted"
+    ) {
+      const organizationId = await getVendorOrganizationId(vendorId);
+      if (organizationId) {
+        const [ownerLookup, vendorRes, workOrderRes] = await Promise.all([
+          getOrgOwnerRecipient(organizationId),
+          supabase
+            .from("vendors")
+            .select("name")
+            .eq("id", vendorId)
+            .maybeSingle(),
+          parsed.data.work_order_id
+            ? supabase
+                .from("work_orders")
+                .select("title")
+                .eq("id", parsed.data.work_order_id)
+                .maybeSingle()
+            : Promise.resolve({ data: null }),
+        ]);
+        await notifyVendorInvoiceSubmitted({
+          organizationId,
+          invoiceId: id,
+          recipientEmail: ownerLookup?.email ?? null,
+          recipientName: ownerLookup?.name ?? "Team",
+          vendorName: vendorRes.data?.name ?? "Vendor",
+          invoiceNumber: parsed.data.invoice_number ?? id,
+          amount: `$${(parsed.data.amount ?? 0).toLocaleString()}`,
+          workOrderTitle: workOrderRes.data?.title ?? null,
+        });
+      }
+    }
+  } catch {
+    // best-effort
+  }
 
   revalidatePath("/vendor-portal");
   revalidatePath("/vendor-portal/invoices");
