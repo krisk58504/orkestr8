@@ -2,8 +2,9 @@
 
 > **Status: EXECUTED — cross-org 13/13 (2026-05-18), within-org role
 > isolation R1–R5 5/5 (2026-05-19), Phase 2 (vendors / maintenance /
-> work orders) 23/23 (2026-05-19), and user-columns pin (SECURITY_REVIEW.md
-> §8.4 fix) 10/10 (2026-05-19); all passed, 0 errored.**
+> work orders) 23/23 (2026-05-19), user-columns pin (SECURITY_REVIEW.md
+> §8.4 fix) 10/10 (2026-05-19), and Phase 2 §8.1/§8.2/§8.3 closure 25/25
+> (2026-05-19); all passed, 0 errored. Total 76 assertions across 5 suites.**
 > Run against the dev database over the Session pooler connection. Human RLS
 > sign-off remains outstanding — see SECURITY_REVIEW.md.
 
@@ -110,6 +111,24 @@ preserving the legitimate provisioning paths.
 | P9 | trusted role (`postgres`) | `update users set vendor_id = '<other>'` | ✅ **raises** — defense-in-depth reassignment guard |
 | P10 | trusted role (`postgres`) | `update users set organization_id = '<other>'` | ✅ **raises** — defense-in-depth reassignment guard |
 
+## 4d. Phase 2 §8.1 / §8.2 / §8.3 closure test
+
+Implemented in `supabase/tests/rls_phase2_blockers_closed.sql`. Verifies
+the fixes from migrations `20260519001100` (org_id pin on vendor writes),
+`20260519001200` (vendor invoice status restriction), and `20260519001300`
+(SELECT role gate). Each fix is exercised in BOTH directions — hole
+closed AND legitimate vendor-portal behaviour preserved.
+
+| Block | Cases | What's proved |
+|---|---|---|
+| §8.3 | R1–R4 | a stray-vendor-id user with no `VENDOR_*` role sees 0 rows on vendors / work_orders / vendor_invoices / work_order_photos |
+| §8.3 regression | R5–R8 | a legitimate vendor user still sees own vendor row, assigned work orders, own invoices, photos on assigned WOs |
+| §8.1 | C2, C3, C5, C7 | vendor cannot move work_order / invoice between orgs; vendor cannot INSERT photo or invoice with mismatched `organization_id` |
+| §8.1 regression | C1, C4, C6, C8 | vendor still updates own WO status; still inserts photo with matching org; still inserts invoice (`draft`); still updates non-protected invoice fields |
+| §8.2 | S1, S2, S3, S6 | vendor cannot INSERT invoice with status `approved` / `paid` / `rejected`; cannot UPDATE existing invoice to `paid` |
+| §8.2 regression | S4, S5, S7 | vendor CAN INSERT with `draft` / `submitted`; can UPDATE to `draft` |
+| §8.2 staff | S8, S9 | staff manager retains full status control (INSERT `approved`, UPDATE to `paid`) |
+
 ## 5. How to run
 
 ```bash
@@ -118,6 +137,7 @@ npx tsx scripts/run-sql.ts supabase/tests/rls_cross_org.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_within_org.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase2.sql
 npx tsx scripts/run-sql.ts supabase/tests/user_columns_pin.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase2_blockers_closed.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -135,3 +155,5 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 23 / 23, 0 errored | `rls_phase2.sql` — P1-P5, V1-V11, RW1-RW6, AN1 |
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 10 / 10, 0 errored | `user_columns_pin.sql` — P1-P10 (§8.4 fix) |
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 13 / 13, 5 / 5, 23 / 23, 0 errored | full re-run after §8.4 migration — no regressions in prior suites |
+| 2026-05-19 | `scripts/run-sql.ts` (pg) | 25 / 25, 0 errored | `rls_phase2_blockers_closed.sql` — R1-R8, C1-C8, S1-S9 (§8.1/§8.2/§8.3 fixes) |
+| 2026-05-19 | `scripts/run-sql.ts` (pg) | 13 / 13, 5 / 5, 23 / 23, 10 / 10, 0 errored | full re-run after §8.1/§8.2/§8.3 migrations — no regressions in prior suites |

@@ -119,13 +119,21 @@ cleanup.
   phone numbers) of the organization. Shipping a portal without this change is
   a Gate 1 regression.
 
-## 8. Phase 2 RLS gaps — fix before production
+## 8. Phase 2 RLS gaps — review findings (all four RESOLVED 2026-05-19)
 
-The Phase 2 design review (2026-05-19) identified the gaps below. None is
-exploitable as a confidentiality leak through the current vendor-portal
-server actions, but each lives in RLS — the authoritative enforcement layer
-per SPEC Gate 1 — and so each must be closed before any production
-deployment. These are **production blockers**, not future-phase work.
+The Phase 2 design review (2026-05-19) identified the four gaps below. None
+was exploitable as a confidentiality leak through the current vendor-portal
+server actions, but each lived in RLS — the authoritative enforcement layer
+per SPEC Gate 1 — and so each had to be closed before production. All four
+were classified as production blockers; all four have been resolved by
+migrations applied to dev on the same day.
+
+| § | Topic | Migration | Verified by |
+|---|---|---|---|
+| 8.1 | `organization_id` not pinned on vendor writes | `20260519001100_pin_org_id_on_vendor_writes.sql` | `rls_phase2_blockers_closed.sql` C1–C8 |
+| 8.2 | vendor could RLS-write invoice `status` to approved/paid | `20260519001200_vendor_invoice_status_restriction.sql` | `rls_phase2_blockers_closed.sql` S1–S9 |
+| 8.3 | SELECT branches lacked `is_vendor_user()` | `20260519001300_vendor_select_role_gate.sql` | `rls_phase2_blockers_closed.sql` R1–R8 |
+| 8.4 | `users.vendor_id` / `organization_id` NULL→value self-set | `20260519001000_protect_user_columns_pin.sql` | `user_columns_pin.sql` P1–P10 |
 
 ### 8.1 `organization_id` not pinned on the vendor branches of `work_orders`, `work_order_photos`, `vendor_invoices`
 
@@ -149,10 +157,24 @@ app does not expose the path; RLS does. Test V8 (rls_phase2.sql) covered
 `assigned_vendor_id` reassignment only — `organization_id` mutation by a
 vendor is untested.
 
-**Fix direction (informational, not applied):** extend each vendor `WITH
-CHECK` to pin `organization_id` (for UPDATE, require it match the existing
-row; for INSERT, require it match the parent — the WO's or the vendor's
-org), or add a separate `RESTRICTIVE` policy that enforces the org match.
+**Fix applied (2026-05-19):** migration
+`20260519001100_pin_org_id_on_vendor_writes.sql` extends each vendor
+`WITH CHECK` branch with an `organization_id` constraint. Pure-RLS
+approach (no trigger) keeps the constraint co-located with the rest of
+the policy, visible in `pg_policies` for audit.
+
+- UPDATE branches (`work_orders`, `vendor_invoices`):
+  `organization_id = (select org from <self> where id = new.id)` —
+  WITH CHECK is evaluated before storage, so the subquery returns
+  `old.organization_id`. A vendor cannot move a row to another org.
+- INSERT branches (`work_order_photos`, `vendor_invoices`):
+  `organization_id = (select org from <parent> where id = new.<parent_id>)`
+  — pins to the parent's org (the WO's org for photos, the vendor's
+  managing org for invoices). The work-orders INSERT branch has no
+  vendor path and was not changed.
+
+Verified by `supabase/tests/rls_phase2_blockers_closed.sql` cases
+C1–C8 (hole closed + legitimate paths preserved).
 
 ### 8.2 Vendor can RLS-write `vendor_invoices.status` to `approved` / `paid`
 
@@ -171,11 +193,30 @@ Phase 2 migration is honest about this in a comment ("Status-transition
 rules … are enforced in server actions, not RLS") — recorded here as a
 production-blocking gap.
 
-**Fix direction (informational, not applied):** either (a) add a
-`RESTRICTIVE` policy on `vendor_invoices` that constrains the vendor
-branch's `WITH CHECK` to `status IN ('draft','submitted')`, or (b) a
-BEFORE INSERT/UPDATE trigger that clamps or refuses the status when the
-caller is a vendor user.
+**Fix applied (2026-05-19):** migration
+`20260519001200_vendor_invoice_status_restriction.sql` adds two
+RESTRICTIVE policies (one for INSERT, one for UPDATE) on
+`vendor_invoices`:
+
+```
+as restrictive ...
+with check (not is_vendor_user() or status in ('draft','submitted'))
+```
+
+`RESTRICTIVE` was chosen over a BEFORE INSERT/UPDATE trigger because:
+(a) Gate 1 declares RLS the authoritative enforcement layer — keeping
+the constraint with the rest of the policy keeps the full posture
+visible in `pg_policies`; (b) a silent trigger clamp masks intent and
+a raising trigger is a hidden enforcement object that future reviewers
+must remember to inspect; (c) `RESTRICTIVE … AND permissive` is the
+standard Postgres pattern for "this branch can do X but only if Y."
+Staff (`is_org_manager`) and `is_super_admin` are unaffected by the
+restrictive — they retain full status control.
+
+Verified by `supabase/tests/rls_phase2_blockers_closed.sql` cases
+S1–S9: vendor INSERT/UPDATE blocked for `approved` / `paid` /
+`rejected`; allowed for `draft` / `submitted`; staff manager retains
+full control.
 
 ### 8.3 `SELECT`-branch `is_vendor_user()` asymmetry on vendor-scoped tables
 
@@ -196,10 +237,24 @@ latent — but it composes with any path that lets a non-vendor account end
 up with a non-null `users.vendor_id`, turning a stray column write into a
 read escalation against that vendor's data.
 
-**Fix direction (informational, not applied):** add `AND is_vendor_user()`
-to each of the four SELECT branches above so read and write are gated
-symmetrically. This also defends in depth against any future regression
-that lets a stray `vendor_id` land on a non-vendor account.
+**Fix applied (2026-05-19):** migration
+`20260519001300_vendor_select_role_gate.sql` adds `is_vendor_user()` to
+all four vendor SELECT paths so reads are gated symmetrically with
+writes. The three non-photo SELECT policies (`vendors_select`,
+`work_orders_select`, `vendor_invoices_select`) gain `AND
+is_vendor_user()` on their vendor branches. For `work_order_photos`,
+`is_vendor_user()` is added inside the helper function
+`work_order_assigned_to_current_vendor()` so all three photo policies
+(select / insert / delete) inherit the role gate — defence in depth.
+
+This closes the composition with §8.4: even if a stray non-null
+`users.vendor_id` ever landed on a non-vendor account, it would no
+longer grant read access to that vendor's data.
+
+Verified by `supabase/tests/rls_phase2_blockers_closed.sql` cases
+R1–R8: a stray-vendor-id user with no `VENDOR_*` role sees 0 rows on
+vendors / work_orders / vendor_invoices / work_order_photos;
+legitimate vendor users still see their own data.
 
 ### 8.4 `users.vendor_id` / `users.organization_id` admit a one-shot `NULL → value` self-set — the most reachable of the §8 items
 
