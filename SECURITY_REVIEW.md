@@ -119,7 +119,141 @@ cleanup.
   phone numbers) of the organization. Shipping a portal without this change is
   a Gate 1 regression.
 
-## 8. Known limitations (intended for later phases)
+## 8. Phase 2 RLS gaps — fix before production
+
+The Phase 2 design review (2026-05-19) identified the gaps below. None is
+exploitable as a confidentiality leak through the current vendor-portal
+server actions, but each lives in RLS — the authoritative enforcement layer
+per SPEC Gate 1 — and so each must be closed before any production
+deployment. These are **production blockers**, not future-phase work.
+
+### 8.1 `organization_id` not pinned on the vendor branches of `work_orders`, `work_order_photos`, `vendor_invoices`
+
+The vendor-scoping `WITH CHECK` clauses on these three tables pin the vendor
+reference (`assigned_vendor_id` / `vendor_id`, or via
+`work_order_assigned_to_current_vendor` for photos) to the caller's own
+vendor, but they do **not** also require `organization_id` to match the
+row's current org. Compare:
+
+- staff branch: `(organization_id = current_user_org_id() AND is_org_staff())`
+- vendor branch: `(assigned_vendor_id = current_user_vendor_id() AND is_vendor_user())` — no org pin
+
+Consequence (write-integrity, not read leak): a vendor user can craft an
+`UPDATE` / `INSERT` that carries an arbitrary `organization_id`, as long as
+the vendor reference is theirs. They could move a work order or photo into
+another organization, or stamp a freshly-inserted photo with an arbitrary
+org id. The Phase 2 migration comment on `work_orders` claims a vendor
+"cannot move it to another organization" — the policy as written does not
+enforce that. Current server actions write only specific columns, so the
+app does not expose the path; RLS does. Test V8 (rls_phase2.sql) covered
+`assigned_vendor_id` reassignment only — `organization_id` mutation by a
+vendor is untested.
+
+**Fix direction (informational, not applied):** extend each vendor `WITH
+CHECK` to pin `organization_id` (for UPDATE, require it match the existing
+row; for INSERT, require it match the parent — the WO's or the vendor's
+org), or add a separate `RESTRICTIVE` policy that enforces the org match.
+
+### 8.2 Vendor can RLS-write `vendor_invoices.status` to `approved` / `paid`
+
+`vendor_invoices_insert` and `vendor_invoices_update` allow the vendor
+branch `(vendor_id = current_user_vendor_id() AND is_vendor_user())` with
+no column-level restriction. Nothing in RLS constrains which
+`vendor_invoice_status` value a vendor may write. At the RLS layer a vendor
+can therefore mark their own invoice `approved` or `paid`. The "vendor
+cannot approve / pay its own invoice" property is enforced **only** by the
+vendor-portal server action (`createVendorInvoice` /
+`updateVendorInvoice` clamp status to `draft`/`submitted`).
+
+Per SPEC Gate 1, RLS is the authoritative enforcement layer; an integrity
+property that exists only in the app layer is not defense-in-depth. The
+Phase 2 migration is honest about this in a comment ("Status-transition
+rules … are enforced in server actions, not RLS") — recorded here as a
+production-blocking gap.
+
+**Fix direction (informational, not applied):** either (a) add a
+`RESTRICTIVE` policy on `vendor_invoices` that constrains the vendor
+branch's `WITH CHECK` to `status IN ('draft','submitted')`, or (b) a
+BEFORE INSERT/UPDATE trigger that clamps or refuses the status when the
+caller is a vendor user.
+
+### 8.3 `SELECT`-branch `is_vendor_user()` asymmetry on vendor-scoped tables
+
+The vendor `SELECT` branches on `vendors`, `work_orders`, `vendor_invoices`,
+and the `work_order_assigned_to_current_vendor()` function used by
+`work_order_photos` key only on row equality with `current_user_vendor_id()`:
+
+- `vendors_select`:           `(id = current_user_vendor_id())`
+- `work_orders_select`:       `(assigned_vendor_id = current_user_vendor_id())`
+- `vendor_invoices_select`:   `(vendor_id = current_user_vendor_id())`
+- `work_order_photos_select`: `work_order_assigned_to_current_vendor(work_order_id)`
+
+None of these additionally requires `is_vendor_user()`. The corresponding
+`UPDATE` / `INSERT` branches **do** require it. Consequence: any user whose
+`users.vendor_id` is non-null gains vendor-scoped READ access regardless of
+role. Today only portal users have a non-null `vendor_id`, so this is
+latent — but it composes with any path that lets a non-vendor account end
+up with a non-null `users.vendor_id`, turning a stray column write into a
+read escalation against that vendor's data.
+
+**Fix direction (informational, not applied):** add `AND is_vendor_user()`
+to each of the four SELECT branches above so read and write are gated
+symmetrically. This also defends in depth against any future regression
+that lets a stray `vendor_id` land on a non-vendor account.
+
+### 8.4 `users.vendor_id` / `users.organization_id` admit a one-shot `NULL → value` self-set — the most reachable of the §8 items
+
+**This is the most reachable of the §8 production blockers.** It is
+exploitable by any authenticated user against the dev database via a single
+direct `UPDATE` statement, and it composes with §8.3 into a confidentiality
+escalation against an arbitrary vendor's data.
+
+Mechanism:
+
+- `users_update_self` permits a user to UPDATE their own row with
+  `WITH CHECK (id = auth.uid())` — no column-value constraint.
+- Column-level `UPDATE` on `vendor_id` and `organization_id` is granted to
+  `authenticated`.
+- `protect_user_columns` raises only when `old.<col> IS NOT NULL` and the new
+  value differs. The `NULL → value` transition is permitted — asymmetric to
+  how `id` and `is_super_admin` are handled (both use unconditional silent
+  overwrite, `new.x := old.x`).
+
+A freshly-created `public.users` row has both `organization_id` and
+`vendor_id` set to `NULL` (the `handle_new_user` trigger does not assign
+them). A user can therefore issue one of the following at any time before
+the columns are filled by trusted code:
+
+```sql
+update public.users set vendor_id      = '<any vendor uuid>' where id = auth.uid();
+update public.users set organization_id = '<any org uuid>'    where id = auth.uid();
+```
+
+Both succeed. Subsequent attempts raise.
+
+Consequence — read escalation, not full takeover:
+- `current_user_vendor_id()` now returns the attacker-chosen vendor uuid.
+- Because §8.3 leaves the vendor `SELECT` branches ungated by
+  `is_vendor_user()`, the attacker gains scoped READ access to that
+  vendor's `vendors` row, work orders, photos, and invoices, without ever
+  having held a `VENDOR_ADMIN` or `VENDOR_TECH` role. Write branches stay
+  closed (they additionally require `is_vendor_user()`).
+- Self-assigning `organization_id` similarly hands the attacker
+  `current_user_org_id()` for an arbitrary org — relevant to the §7
+  Phase-3 blocker on `users_select`.
+
+**Fix applied (2026-05-19):** migration
+`20260519001000_protect_user_columns_pin.sql` extends `protect_user_columns`
+to pin `vendor_id` and `organization_id` unconditionally
+(`new.x := old.x`) for any caller running as `authenticated` / `anon`.
+Trusted roles (`postgres`, `service_role`, `supabase_admin`) retain the
+ability to set them — `create_organization` (SECURITY DEFINER, owned by
+`postgres`) still functions, and admin-client writes still work. The
+pre-existing reassignment guard (raise on non-NULL → other) is retained for
+trusted callers as defense in depth. Verified by
+`supabase/tests/user_columns_pin.sql`.
+
+## 9. Known limitations (intended for later phases)
 
 - Tenant-portal read scoping (a `TENANT` user seeing only their own unit /
   lease / documents) is only partially present in Phase 1 (`tenants` allows a
@@ -132,7 +266,7 @@ cleanup.
   beyond R1–R5 (e.g. `MAINTENANCE_TECH` reads tenants but cannot write them),
   and the RLS that will arrive with later-phase tables.
 
-## 9. Reviewer checklist
+## 10. Reviewer checklist
 
 - [x] Migrations applied to the dev database without error. _(2026-05-18)_
 - [x] `RLS_TEST_PLAN.md` executed; every cross-org case denies access.
@@ -150,7 +284,7 @@ cleanup.
       _(5/5 automated assertions passed — 2026-05-19)_
 - [x] Cross-org isolation accepted by the reviewer. _(2026-05-19)_
 
-## 10. Sign-off
+## 11. Sign-off
 
 | Reviewer | Date | Outcome |
 |---|---|---|

@@ -1,8 +1,9 @@
 # RLS_TEST_PLAN.md — Row Level Security test plan
 
 > **Status: EXECUTED — cross-org 13/13 (2026-05-18), within-org role
-> isolation R1–R5 5/5 (2026-05-19), and Phase 2 (vendors / maintenance /
-> work orders) 23/23 (2026-05-19); all passed, 0 errored.**
+> isolation R1–R5 5/5 (2026-05-19), Phase 2 (vendors / maintenance /
+> work orders) 23/23 (2026-05-19), and user-columns pin (SECURITY_REVIEW.md
+> §8.4 fix) 10/10 (2026-05-19); all passed, 0 errored.**
 > Run against the dev database over the Session pooler connection. Human RLS
 > sign-off remains outstanding — see SECURITY_REVIEW.md.
 
@@ -88,6 +89,27 @@ Implemented in `supabase/tests/rls_phase2.sql`.
 | RW6 | A-tech | `insert` a `vendor` | ✅ **rejected** (not a manager) |
 | AN1 | anon (no JWT) | `select` `work_orders` | ✅ **0 rows** / denied |
 
+## 4c. User-columns pin test (SECURITY_REVIEW.md §8.4 fix)
+
+Implemented in `supabase/tests/user_columns_pin.sql`. Verifies that
+migration `20260519001000_protect_user_columns_pin.sql` closes the
+`NULL → value` self-set window on `users.vendor_id` and
+`users.organization_id` for `authenticated`/`anon` callers, while
+preserving the legitimate provisioning paths.
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| P1 | (privileged) | `insert auth.users` row | ✅ `public.users` created with both columns NULL via `handle_new_user` |
+| P2 | `authenticated` (self) | `update users set vendor_id = …` | ✅ trigger silently pins; `vendor_id` stays NULL |
+| P3 | `authenticated` (self) | `update users set organization_id = …` | ✅ trigger silently pins; `organization_id` stays NULL |
+| P4 | `authenticated` (self) | `update users set full_name = …` | ✅ allowed — non-protected column unaffected |
+| P5 | `authenticated` (self) | `select create_organization(…)` | ✅ SECURITY DEFINER path sets `organization_id` |
+| P6 | `authenticated` (self) | `update users set organization_id = null` | ✅ cleared attempt rejected; stays set |
+| P7 | `authenticated` (self) | `update users set organization_id = '<other>'` | ✅ reassignment attempt rejected; stays as own org |
+| P8 | trusted role (`postgres`) | `update users set vendor_id = …` | ✅ allowed (NULL → value) |
+| P9 | trusted role (`postgres`) | `update users set vendor_id = '<other>'` | ✅ **raises** — defense-in-depth reassignment guard |
+| P10 | trusted role (`postgres`) | `update users set organization_id = '<other>'` | ✅ **raises** — defense-in-depth reassignment guard |
+
 ## 5. How to run
 
 ```bash
@@ -95,6 +117,7 @@ Implemented in `supabase/tests/rls_phase2.sql`.
 npx tsx scripts/run-sql.ts supabase/tests/rls_cross_org.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_within_org.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase2.sql
+npx tsx scripts/run-sql.ts supabase/tests/user_columns_pin.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -110,3 +133,5 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-18 | `scripts/run-sql.ts` (pg) | 13 / 13, 0 errored | `rls_cross_org.sql` — #1,#2,#2b,#4,#5,#6,#7,#7b,#10,#11,#12,#13,#14 |
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 5 / 5, 0 errored | `rls_within_org.sql` — R1,R2,R3,R4,R5 |
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 23 / 23, 0 errored | `rls_phase2.sql` — P1-P5, V1-V11, RW1-RW6, AN1 |
+| 2026-05-19 | `scripts/run-sql.ts` (pg) | 10 / 10, 0 errored | `user_columns_pin.sql` — P1-P10 (§8.4 fix) |
+| 2026-05-19 | `scripts/run-sql.ts` (pg) | 13 / 13, 5 / 5, 23 / 23, 0 errored | full re-run after §8.4 migration — no regressions in prior suites |
