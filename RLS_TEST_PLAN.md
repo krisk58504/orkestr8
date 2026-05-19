@@ -1,9 +1,9 @@
 # RLS_TEST_PLAN.md — Row Level Security test plan
 
-> **Status: EXECUTED 2026-05-18 — all 13 cross-org assertions passed, 0 errored.**
-> Run against the dev database over the Session pooler connection. Role
-> isolation cases R1–R5 are not yet automated. Human RLS review remains
-> outstanding — see SECURITY_REVIEW.md.
+> **Status: EXECUTED — cross-org 13/13 (2026-05-18) and within-org role
+> isolation R1–R5 5/5 (2026-05-19); all passed, 0 errored.**
+> Run against the dev database over the Session pooler connection. Human RLS
+> sign-off remains outstanding — see SECURITY_REVIEW.md.
 
 ## 1. Approach
 
@@ -59,6 +59,7 @@ two organizations and rolls everything back at the end.
 ```bash
 # psql is not installed locally — use the project runner (pg client):
 npx tsx scripts/run-sql.ts supabase/tests/rls_cross_org.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_within_org.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -71,4 +72,5 @@ SQLSTATE means the test could not complete (an infrastructure error).
 
 | Date | Runner | Cases passed | Notes |
 |---|---|---|---|
-| 2026-05-18 | `scripts/run-sql.ts` (pg) | 13 / 13, 0 errored | Cases #1,#2,#2b,#4,#5,#6,#7,#7b,#10,#11,#12,#13,#14 — Session pooler |
+| 2026-05-18 | `scripts/run-sql.ts` (pg) | 13 / 13, 0 errored | `rls_cross_org.sql` — #1,#2,#2b,#4,#5,#6,#7,#7b,#10,#11,#12,#13,#14 |
+| 2026-05-19 | `scripts/run-sql.ts` (pg) | 5 / 5, 0 errored | `rls_within_org.sql` — R1,R2,R3,R4,R5 |
