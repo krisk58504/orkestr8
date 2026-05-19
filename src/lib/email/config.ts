@@ -42,3 +42,12 @@ export function isRecipientAllowed(address: string): boolean {
   if (getEmailMode() === "production") return true;
   return getApprovedTestEmails().includes(normalizeAddress(address));
 }
+
+/**
+ * Verified sender address for outbound mail. Reads EMAIL_FROM when set;
+ * otherwise falls back to Resend's shared test sender, which works without a
+ * verified domain — appropriate for test mode.
+ */
+export function getFromAddress(): string {
+  return process.env.EMAIL_FROM?.trim() || "PMS-Build <onboarding@resend.dev>";
+}

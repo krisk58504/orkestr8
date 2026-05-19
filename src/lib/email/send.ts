@@ -3,25 +3,24 @@
  *
  * sendEmail() runs every safety gate an outbound message must pass:
  *   1. duplicate-send suppression (anti-loop protection)
- *   2. mode resolution (test vs production)
- *   3. test-mode recipient allowlisting
- *   4. logging of the attempt to email_log
+ *   2. test-mode recipient allowlisting
+ *   3. test-mode-only guard (the wired send path is authorized for test mode
+ *      only — see EMAIL_SAFETY.md section 5)
+ *   4. delivery via Resend, then logging the provider's verdict to email_log
  *
- * It then reaches the SEND SEAM. The actual provider call (Resend) is
- * intentionally NOT wired — see the banner below and EMAIL_SAFETY.md. Until a
- * human completes the Gate 3 checklist, a permitted message is logged with
- * status 'queued' and sendEmail() returns delivered:false.
- *
- * Nothing in this module can deliver mail. That is by design.
+ * The Resend send path is WIRED and ACTIVE for `test` mode only. In any other
+ * mode the message is blocked before delivery. The status (`sent`/`failed`) is
+ * logged AFTER the provider responds — never a pre-emptive `queued`.
  */
 import "server-only";
-import { getEmailMode, isRecipientAllowed } from "./config";
+import { Resend } from "resend";
+import { getEmailMode, getFromAddress, isRecipientAllowed } from "./config";
 import { isDuplicateRecentSend, logEmailAttempt } from "./log";
 import type { EmailSendResult, OutboundEmail } from "./types";
 
 /**
  * Prepare and gate an outbound email. Returns the outcome; never throws for an
- * ordinary blocked/suppressed/queued result.
+ * ordinary blocked/suppressed/failed result.
  */
 export async function sendEmail(
   email: OutboundEmail,
@@ -36,7 +35,7 @@ export async function sendEmail(
     return { delivered: false, status: "suppressed", mode, reason };
   }
 
-  // --- Gate 2/3: test-mode recipient allowlist ---
+  // --- Gate 2: test-mode recipient allowlist ---
   if (!isRecipientAllowed(email.to)) {
     const reason =
       "Blocked — recipient is not on the APPROVED_TEST_EMAILS allowlist " +
@@ -45,39 +44,69 @@ export async function sendEmail(
     return { delivered: false, status: "blocked", mode, reason };
   }
 
-  // =========================================================================
-  // ███  EMAIL SEND SEAM — INTENTIONALLY NOT WIRED (SPEC Gate 3)  ███
-  //
-  // The recipient has passed every gate. The next step is the actual Resend
-  // API call. It is deliberately NOT implemented here.
-  //
-  // Per SPEC.md Gate 3 and EMAIL_SAFETY.md, wiring a live send path — even in
-  // test mode — requires explicit human sign-off and the Gate 3 checklist.
-  // Until then, a permitted message is recorded as 'queued' and NOT sent.
-  //
-  // To wire delivery (only after sign-off):
-  //   1. `npm install resend`
-  //   2. implement deliverViaResend() below with a separate prod/test key
-  //   3. call it here; on success log 'sent', on error log 'failed'
-  // =========================================================================
-  const reason =
-    "Queued — passed all gates. Send path not wired (SPEC Gate 3); " +
-    "no message was delivered. See EMAIL_SAFETY.md.";
-  await logEmailAttempt(email, mode, "queued", reason);
-  return { delivered: false, status: "queued", mode, reason };
+  // --- Gate 3: the wired send path is authorized for TEST MODE ONLY ---
+  // Production sending stays blocked here until the EMAIL_SAFETY.md
+  // blocking-before-production items are resolved and signed off.
+  if (mode !== "test") {
+    const reason =
+      "Blocked — the Resend send path is authorized for test mode only; " +
+      "production sending is not yet permitted (see EMAIL_SAFETY.md).";
+    await logEmailAttempt(email, mode, "blocked", reason);
+    return { delivered: false, status: "blocked", mode, reason };
+  }
+
+  // --- Deliver, then log the provider's verdict (after it responds) ---
+  try {
+    const { providerId } = await deliverViaResend(email);
+    const reason = `Sent via Resend (message id ${providerId}).`;
+    // Record the provider id on the email_log payload.
+    const delivered: OutboundEmail = {
+      ...email,
+      payload: { ...(email.payload ?? {}), provider: "resend", providerId },
+    };
+    await logEmailAttempt(delivered, mode, "sent", reason);
+    return { delivered: true, status: "sent", mode, reason };
+  } catch (err) {
+    const reason = `Failed — ${
+      err instanceof Error ? err.message : "unknown send error"
+    }.`;
+    await logEmailAttempt(email, mode, "failed", reason);
+    return { delivered: false, status: "failed", mode, reason };
+  }
 }
 
 /**
- * SEND SEAM placeholder. This is where the Resend provider call belongs.
+ * Deliver one email via the Resend provider.
  *
- * It is deliberately unimplemented and unreferenced: calling it throws. It
- * exists only to document the contract of the missing send path. Do not
- * implement this without completing the EMAIL_SAFETY.md Gate 3 checklist.
+ * Uses the dev/test RESEND_API_KEY from the environment. Returns the Resend
+ * message id on success; throws on a missing key, a provider rejection, or a
+ * network error — sendEmail() catches that and logs the attempt as `failed`.
+ *
+ * This is reached only after every gate in sendEmail() has passed, including
+ * the test-mode-only guard.
  */
-export async function deliverViaResend(_email: OutboundEmail): Promise<never> {
-  void _email;
-  throw new Error(
-    "Email send path is not wired (SPEC Gate 3). " +
-      "See EMAIL_SAFETY.md before implementing deliverViaResend().",
-  );
+export async function deliverViaResend(
+  email: OutboundEmail,
+): Promise<{ providerId: string }> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is not set — cannot send.");
+  }
+
+  const resend = new Resend(apiKey);
+  const { data, error } = await resend.emails.send({
+    from: getFromAddress(),
+    to: email.to,
+    subject: email.content.subject,
+    html: email.content.html,
+    text: email.content.text,
+  });
+
+  if (error) {
+    throw new Error(`Resend rejected the message: ${error.message}`);
+  }
+  if (!data?.id) {
+    throw new Error("Resend returned no message id.");
+  }
+  return { providerId: data.id };
 }

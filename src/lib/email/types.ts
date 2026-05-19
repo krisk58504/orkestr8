@@ -16,9 +16,10 @@ export type EmailContent = {
 
 /**
  * email_log.status values.
- * - queued     — passed every gate; awaiting an actual send path (not wired).
- * - sent       — delivered by the provider.
- * - blocked    — dropped by the test-mode allowlist.
+ * - queued     — the email_log column default; not produced by sendEmail()
+ *                now that the send path is wired.
+ * - sent       — accepted by the provider (logged after it responds).
+ * - blocked    — dropped by the test-mode allowlist or the test-mode-only guard.
  * - suppressed — dropped by duplicate-send protection.
  * - failed     — the provider rejected or errored on the send.
  */
