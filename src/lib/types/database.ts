@@ -1,10 +1,14 @@
 /**
  * database.ts — TypeScript shape of the PMS-Build Postgres schema.
  *
- * Hand-authored to match supabase/migrations/. Once migrations are applied to
- * the dev project this can be regenerated with:
- *   supabase gen types typescript --project-id <ref> > src/lib/types/database.ts
- * Keep this file in sync with the migration files until then.
+ * Authored from supabase/migrations/ and VERIFIED 2026-05-18 by direct
+ * introspection of the live dev database (scripts/schema-dump.ts): every
+ * table, column, nullability, and enum matches the applied schema exactly.
+ *
+ * `supabase gen types` could not run in the build environment (it requires
+ * Docker for --db-url, or Supabase API auth for --project-id). To regenerate
+ * with the official tool later, from a machine with Docker / a linked project:
+ *   supabase gen types typescript --linked > src/lib/types/database.ts
  */
 
 export type Json =

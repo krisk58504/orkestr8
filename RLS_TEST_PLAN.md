@@ -1,9 +1,9 @@
 # RLS_TEST_PLAN.md — Row Level Security test plan
 
-> **Status: test cases WRITTEN, NOT YET EXECUTED.**
-> The dev Supabase database was unreachable during the Phase 1 build (its
-> direct connection is IPv6-only; see the build report). These tests must be
-> run once the database is reachable, before RLS is considered reviewed.
+> **Status: EXECUTED 2026-05-18 — all 13 cross-org assertions passed, 0 errored.**
+> Run against the dev database over the Session pooler connection. Role
+> isolation cases R1–R5 are not yet automated. Human RLS review remains
+> outstanding — see SECURITY_REVIEW.md.
 
 ## 1. Approach
 
@@ -57,16 +57,18 @@ two organizations and rolls everything back at the end.
 ## 5. How to run
 
 ```bash
-# once DATABASE_URL points at a reachable (pooler) dev connection:
-psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
-# or, with the project's runner pattern, via any SQL client.
+# psql is not installed locally — use the project runner (pg client):
+npx tsx scripts/run-sql.ts supabase/tests/rls_cross_org.sql
+# equivalent, if psql is available:
+#   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
 
-Every `ASSERT` in the script must pass. A failed assert aborts the transaction
-and prints the failing case.
+Every check is a plpgsql `ASSERT`. A failed assert aborts the transaction with
+SQLSTATE `P0004` and a `FAIL #n` message (a clean test failure); any other
+SQLSTATE means the test could not complete (an infrastructure error).
 
 ## 6. Result log
 
 | Date | Runner | Cases passed | Notes |
 |---|---|---|---|
-| _pending_ | _pending_ | _pending_ | DB unreachable at build time |
+| 2026-05-18 | `scripts/run-sql.ts` (pg) | 13 / 13, 0 errored | Cases #1,#2,#2b,#4,#5,#6,#7,#7b,#10,#11,#12,#13,#14 — Session pooler |

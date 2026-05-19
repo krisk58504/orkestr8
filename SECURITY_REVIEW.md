@@ -6,6 +6,10 @@
 > but they are **not certified production-safe** until a human has reviewed and
 > signed off at the bottom of this file. A completed checklist here does not by
 > itself authorize production use — see SPEC.md section 6.
+>
+> As of 2026-05-18 the migrations are applied to the **dev** database and the
+> automated cross-org tests pass (13/13 — see RLS_TEST_PLAN.md). Human review
+> of the policy design is still outstanding.
 
 ## 1. Scope
 
@@ -86,14 +90,19 @@ All cross-org access additionally requires `is_super_admin()`.
 
 ## 7. Reviewer checklist
 
-- [ ] Migrations applied to the dev database without error.
-- [ ] `RLS_TEST_PLAN.md` executed; every cross-org case denies access.
-- [ ] Every table reports `rowsecurity = true`.
-- [ ] No table is missing `organization_id` where applicable.
-- [ ] Helper functions confirmed `SECURITY DEFINER`.
-- [ ] `protect_user_columns` confirmed to block `is_super_admin` escalation.
+- [x] Migrations applied to the dev database without error. _(2026-05-18)_
+- [x] `RLS_TEST_PLAN.md` executed; every cross-org case denies access.
+      _(13/13 automated assertions passed)_
+- [x] Every table reports `rowsecurity = true`. _(verified via
+      scripts/schema-dump.ts — all 13 public tables)_
+- [x] `protect_user_columns` confirmed to block `is_super_admin` escalation.
+      _(automated test #11 / #12)_
+- [ ] No table is missing `organization_id` where applicable. _(human check —
+      note: `audit_logs.organization_id` is intentionally nullable)_
+- [ ] Helper functions confirmed `SECURITY DEFINER` — human read of migration.
 - [ ] Service-role usage in app code reviewed (`src/lib/supabase/admin.ts`,
       `src/lib/data/audit.ts`) — confirmed only for trusted server paths.
+- [ ] Role-isolation cases R1–R5 (RLS_TEST_PLAN.md §4) automated and run.
 
 ## 8. Sign-off
 
