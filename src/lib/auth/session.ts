@@ -57,6 +57,7 @@ export const getSessionContext = cache(
       profile,
       organization,
       roles: (roleRows ?? []).map((r) => r.role as UserRole),
+      vendorId: profile.vendor_id,
     };
   },
 );

@@ -60,6 +60,7 @@ export type Database = {
         Row: {
           id: string;
           organization_id: string | null;
+          vendor_id: string | null;
           email: string;
           full_name: string | null;
           phone: string | null;
@@ -74,6 +75,7 @@ export type Database = {
         Insert: {
           id: string;
           organization_id?: string | null;
+          vendor_id?: string | null;
           email: string;
           full_name?: string | null;
           phone?: string | null;
@@ -382,6 +384,324 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["automation_logs"]["Insert"]>;
         Relationships: [];
       };
+      vendors: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          trade: string | null;
+          status: Database["public"]["Enums"]["vendor_status"];
+          email: string | null;
+          phone: string | null;
+          website: string | null;
+          address_line1: string | null;
+          city: string | null;
+          state: string | null;
+          postal_code: string | null;
+          notes: string | null;
+          rating_avg: number | null;
+          rating_count: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          name: string;
+          trade?: string | null;
+          status?: Database["public"]["Enums"]["vendor_status"];
+          email?: string | null;
+          phone?: string | null;
+          website?: string | null;
+          address_line1?: string | null;
+          city?: string | null;
+          state?: string | null;
+          postal_code?: string | null;
+          notes?: string | null;
+          rating_avg?: number | null;
+          rating_count?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["vendors"]["Insert"]>;
+        Relationships: [];
+      };
+      vendor_contacts: {
+        Row: {
+          id: string;
+          organization_id: string;
+          vendor_id: string;
+          user_id: string | null;
+          first_name: string;
+          last_name: string;
+          email: string | null;
+          phone: string | null;
+          title: string | null;
+          is_primary: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          vendor_id: string;
+          user_id?: string | null;
+          first_name: string;
+          last_name: string;
+          email?: string | null;
+          phone?: string | null;
+          title?: string | null;
+          is_primary?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["vendor_contacts"]["Insert"]>;
+        Relationships: [];
+      };
+      vendor_documents: {
+        Row: {
+          id: string;
+          organization_id: string;
+          vendor_id: string;
+          document_type: Database["public"]["Enums"]["vendor_document_type"];
+          name: string;
+          file_path: string | null;
+          issued_on: string | null;
+          expires_on: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          vendor_id: string;
+          document_type?: Database["public"]["Enums"]["vendor_document_type"];
+          name: string;
+          file_path?: string | null;
+          issued_on?: string | null;
+          expires_on?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["vendor_documents"]["Insert"]>;
+        Relationships: [];
+      };
+      vendor_invoices: {
+        Row: {
+          id: string;
+          organization_id: string;
+          vendor_id: string;
+          work_order_id: string | null;
+          invoice_number: string | null;
+          amount: number;
+          status: Database["public"]["Enums"]["vendor_invoice_status"];
+          issued_on: string | null;
+          due_on: string | null;
+          paid_on: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          vendor_id: string;
+          work_order_id?: string | null;
+          invoice_number?: string | null;
+          amount?: number;
+          status?: Database["public"]["Enums"]["vendor_invoice_status"];
+          issued_on?: string | null;
+          due_on?: string | null;
+          paid_on?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["vendor_invoices"]["Insert"]>;
+        Relationships: [];
+      };
+      vendor_ratings: {
+        Row: {
+          id: string;
+          organization_id: string;
+          vendor_id: string;
+          work_order_id: string | null;
+          rating: number;
+          review: string | null;
+          rated_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          vendor_id: string;
+          work_order_id?: string | null;
+          rating: number;
+          review?: string | null;
+          rated_by?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["vendor_ratings"]["Insert"]>;
+        Relationships: [];
+      };
+      maintenance_requests: {
+        Row: {
+          id: string;
+          organization_id: string;
+          property_id: string;
+          unit_id: string | null;
+          tenant_id: string | null;
+          reported_by: string | null;
+          title: string;
+          description: string | null;
+          category: Database["public"]["Enums"]["maintenance_category"];
+          priority: Database["public"]["Enums"]["maintenance_priority"];
+          status: Database["public"]["Enums"]["maintenance_status"];
+          location_notes: string | null;
+          access_instructions: string | null;
+          permission_to_enter: boolean;
+          ai_triage: Json | null;
+          ai_triaged_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          property_id: string;
+          unit_id?: string | null;
+          tenant_id?: string | null;
+          reported_by?: string | null;
+          title: string;
+          description?: string | null;
+          category?: Database["public"]["Enums"]["maintenance_category"];
+          priority?: Database["public"]["Enums"]["maintenance_priority"];
+          status?: Database["public"]["Enums"]["maintenance_status"];
+          location_notes?: string | null;
+          access_instructions?: string | null;
+          permission_to_enter?: boolean;
+          ai_triage?: Json | null;
+          ai_triaged_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["maintenance_requests"]["Insert"]>;
+        Relationships: [];
+      };
+      work_orders: {
+        Row: {
+          id: string;
+          organization_id: string;
+          maintenance_request_id: string | null;
+          property_id: string;
+          unit_id: string | null;
+          number: string | null;
+          title: string;
+          description: string | null;
+          category: Database["public"]["Enums"]["maintenance_category"];
+          priority: Database["public"]["Enums"]["maintenance_priority"];
+          status: Database["public"]["Enums"]["work_order_status"];
+          assignee_type: Database["public"]["Enums"]["work_order_assignee"];
+          assigned_vendor_id: string | null;
+          assigned_user_id: string | null;
+          scheduled_for: string | null;
+          sla_due_at: string | null;
+          accepted_at: string | null;
+          completed_at: string | null;
+          cost_estimate: number | null;
+          cost_actual: number | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          maintenance_request_id?: string | null;
+          property_id: string;
+          unit_id?: string | null;
+          number?: string | null;
+          title: string;
+          description?: string | null;
+          category?: Database["public"]["Enums"]["maintenance_category"];
+          priority?: Database["public"]["Enums"]["maintenance_priority"];
+          status?: Database["public"]["Enums"]["work_order_status"];
+          assignee_type?: Database["public"]["Enums"]["work_order_assignee"];
+          assigned_vendor_id?: string | null;
+          assigned_user_id?: string | null;
+          scheduled_for?: string | null;
+          sla_due_at?: string | null;
+          accepted_at?: string | null;
+          completed_at?: string | null;
+          cost_estimate?: number | null;
+          cost_actual?: number | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["work_orders"]["Insert"]>;
+        Relationships: [];
+      };
+      work_order_photos: {
+        Row: {
+          id: string;
+          organization_id: string;
+          work_order_id: string;
+          file_path: string;
+          caption: string | null;
+          kind: string;
+          uploaded_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          work_order_id: string;
+          file_path: string;
+          caption?: string | null;
+          kind?: string;
+          uploaded_by?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["work_order_photos"]["Insert"]>;
+        Relationships: [];
+      };
+      email_log: {
+        Row: {
+          id: string;
+          organization_id: string | null;
+          to_address: string;
+          subject: string;
+          template: string;
+          status: string;
+          mode: Database["public"]["Enums"]["email_mode"];
+          reason: string | null;
+          related_entity_type: string | null;
+          related_entity_id: string | null;
+          payload: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id?: string | null;
+          to_address: string;
+          subject: string;
+          template: string;
+          status?: string;
+          mode: Database["public"]["Enums"]["email_mode"];
+          reason?: string | null;
+          related_entity_type?: string | null;
+          related_entity_id?: string | null;
+          payload?: Json;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["email_log"]["Insert"]>;
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -441,6 +761,49 @@ export type Database = {
         | "notice"
         | "past"
         | "evicted";
+      maintenance_status:
+        | "submitted"
+        | "triaged"
+        | "scheduled"
+        | "in_progress"
+        | "on_hold"
+        | "completed"
+        | "cancelled";
+      maintenance_priority: "low" | "medium" | "high" | "emergency";
+      maintenance_category:
+        | "plumbing"
+        | "electrical"
+        | "hvac"
+        | "appliance"
+        | "structural"
+        | "pest"
+        | "landscaping"
+        | "locks"
+        | "general"
+        | "other";
+      work_order_status:
+        | "open"
+        | "assigned"
+        | "accepted"
+        | "in_progress"
+        | "on_hold"
+        | "completed"
+        | "cancelled";
+      work_order_assignee: "unassigned" | "internal" | "vendor";
+      vendor_status: "pending" | "active" | "inactive" | "suspended";
+      vendor_document_type:
+        | "insurance"
+        | "license"
+        | "w9"
+        | "contract"
+        | "certification"
+        | "other";
+      vendor_invoice_status:
+        | "draft"
+        | "submitted"
+        | "approved"
+        | "rejected"
+        | "paid";
     };
     CompositeTypes: { [_ in never]: never };
   };

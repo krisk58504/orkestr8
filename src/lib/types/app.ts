@@ -24,6 +24,15 @@ export type AuditLog = Tables<"audit_logs">;
 export type Notification = Tables<"notifications">;
 export type AiLog = Tables<"ai_logs">;
 export type AutomationLog = Tables<"automation_logs">;
+export type Vendor = Tables<"vendors">;
+export type VendorContact = Tables<"vendor_contacts">;
+export type VendorDocument = Tables<"vendor_documents">;
+export type VendorInvoice = Tables<"vendor_invoices">;
+export type VendorRating = Tables<"vendor_ratings">;
+export type MaintenanceRequest = Tables<"maintenance_requests">;
+export type WorkOrder = Tables<"work_orders">;
+export type WorkOrderPhoto = Tables<"work_order_photos">;
+export type EmailLog = Tables<"email_log">;
 
 export type UserRole = Enums<"user_role">;
 export type AiMode = Enums<"ai_mode">;
@@ -33,6 +42,14 @@ export type PropertyType = Enums<"property_type">;
 export type BuildingStatus = Enums<"building_status">;
 export type UnitStatus = Enums<"unit_status">;
 export type TenantStatus = Enums<"tenant_status">;
+export type MaintenanceStatus = Enums<"maintenance_status">;
+export type MaintenancePriority = Enums<"maintenance_priority">;
+export type MaintenanceCategory = Enums<"maintenance_category">;
+export type WorkOrderStatus = Enums<"work_order_status">;
+export type WorkOrderAssignee = Enums<"work_order_assignee">;
+export type VendorStatus = Enums<"vendor_status">;
+export type VendorDocumentType = Enums<"vendor_document_type">;
+export type VendorInvoiceStatus = Enums<"vendor_invoice_status">;
 
 /** Resolved identity for the signed-in user, loaded once per request. */
 export type SessionContext = {
@@ -41,6 +58,8 @@ export type SessionContext = {
   profile: AppUser;
   organization: Organization;
   roles: UserRole[];
+  /** Set when the user belongs to a vendor company (vendor-portal user). */
+  vendorId: string | null;
 };
 
 /** A property row enriched with aggregate counts for list/detail views. */

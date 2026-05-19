@@ -31,3 +31,8 @@ export function canWriteTenants(roles: UserRole[]): boolean {
 export function isOwner(roles: UserRole[]): boolean {
   return hasAnyRole(roles, ["OWNER", "SUPER_ADMIN"]);
 }
+
+/** External vendor-company user (vendor portal). */
+export function isVendorUser(roles: UserRole[]): boolean {
+  return hasAnyRole(roles, ["VENDOR_ADMIN", "VENDOR_TECH"]);
+}

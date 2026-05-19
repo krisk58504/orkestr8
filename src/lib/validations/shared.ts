@@ -72,6 +72,17 @@ export const optionalDate = z
     "Enter a valid date.",
   );
 
+/** Optional datetime — "" becomes null, otherwise validated as a real date. */
+export const optionalDateTime = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v && v.length > 0 ? v : null))
+  .refine(
+    (v) => v === null || !Number.isNaN(new Date(v).getTime()),
+    "Enter a valid date and time.",
+  );
+
 /** Collapse a ZodError into the first message per top-level field. */
 export function collectFieldErrors(
   error: z.ZodError,

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { isVendorUser } from "@/lib/auth/roles";
 import { getAuthUser, getSessionContext } from "@/lib/auth/session";
 
 export default async function AppLayout({
@@ -12,6 +13,11 @@ export default async function AppLayout({
     // Signed in but no organization yet -> onboarding. Otherwise -> login.
     const user = await getAuthUser();
     redirect(user ? "/onboarding" : "/login");
+  }
+
+  // Vendor-portal users do not belong in the internal app.
+  if (isVendorUser(context.roles)) {
+    redirect("/vendor-portal");
   }
 
   return (

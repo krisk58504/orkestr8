@@ -1,7 +1,8 @@
 # RLS_TEST_PLAN.md — Row Level Security test plan
 
-> **Status: EXECUTED — cross-org 13/13 (2026-05-18) and within-org role
-> isolation R1–R5 5/5 (2026-05-19); all passed, 0 errored.**
+> **Status: EXECUTED — cross-org 13/13 (2026-05-18), within-org role
+> isolation R1–R5 5/5 (2026-05-19), and Phase 2 (vendors / maintenance /
+> work orders) 23/23 (2026-05-19); all passed, 0 errored.**
 > Run against the dev database over the Session pooler connection. Human RLS
 > sign-off remains outstanding — see SECURITY_REVIEW.md.
 
@@ -54,12 +55,46 @@ two organizations and rolls everything back at the end.
 | R4 | role `MAINTENANCE_TECH` | `select` `properties` | ✅ allowed (staff) |
 | R5 | role `MAINTENANCE_TECH` | `update` a `property` | ✅ **rejected** (not a manager) |
 
+## 4b. Phase 2 test matrix (vendors / maintenance / work orders)
+
+Fixtures: two orgs; Org A has an owner, a `MAINTENANCE_TECH`, and a
+`VENDOR_ADMIN` portal user linked to vendor V1; two vendors (V1, V2) in Org A
+and one (V3) in Org B; work orders WO1→V1 and WO2→V2 in Org A, WO3 in Org B.
+Implemented in `supabase/tests/rls_phase2.sql`.
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| P1 | A-owner | `select` `vendors` | ✅ 2 rows (Org A only) |
+| P2 | A-owner | `select` `work_orders` | ✅ 2 rows (Org A only) |
+| P3 | A-owner | `select` Org B `maintenance_requests` | ✅ **0 rows** |
+| P4 | A-owner | `insert` `work_order` with `organization_id` = Org B | ✅ **rejected** by WITH CHECK |
+| P5 | A-owner | `update` an Org B `work_order` | ✅ **0 rows affected** |
+| V1 | V1 portal user | `select` `vendors` | ✅ 1 row — only its own vendor |
+| V2 | V1 portal user | `select` `work_orders` | ✅ 1 row — only WO1 (assigned to V1) |
+| V3 | V1 portal user | `select` `maintenance_requests` | ✅ **0 rows** (vendors never see requests) |
+| V4 | V1 portal user | `select` `work_order_photos` | ✅ 1 row — only WO1's photo |
+| V5 | V1 portal user | `select` `vendor_invoices` | ✅ 1 row — only its own |
+| V6 | V1 portal user | `select` `properties` | ✅ **0 rows** (not org staff) |
+| V7 | V1 portal user | `update` WO1 status | ✅ allowed (own work order) |
+| V8 | V1 portal user | `update` WO1 `assigned_vendor_id` → V2 | ✅ **rejected** by WITH CHECK |
+| V9 | V1 portal user | `update` WO2 (assigned to V2) | ✅ **0 rows affected** |
+| V10 | V1 portal user | `delete` WO1 | ✅ **0 rows** (delete is manager-only) |
+| V11 | V1 portal user | `insert` a `work_order` | ✅ **rejected** (insert is staff-only) |
+| RW1 | A-tech (`MAINTENANCE_TECH`) | `select` `work_orders` | ✅ allowed (staff) |
+| RW2 | A-tech | `select` `maintenance_requests` | ✅ allowed (staff) |
+| RW3 | A-tech | `update` a `work_order` | ✅ allowed (update is staff) |
+| RW4 | A-tech | `delete` a `work_order` | ✅ **0 rows** (not a manager) |
+| RW5 | A-tech | `delete` a `maintenance_request` | ✅ **0 rows** (not a manager) |
+| RW6 | A-tech | `insert` a `vendor` | ✅ **rejected** (not a manager) |
+| AN1 | anon (no JWT) | `select` `work_orders` | ✅ **0 rows** / denied |
+
 ## 5. How to run
 
 ```bash
 # psql is not installed locally — use the project runner (pg client):
 npx tsx scripts/run-sql.ts supabase/tests/rls_cross_org.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_within_org.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase2.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -74,3 +109,4 @@ SQLSTATE means the test could not complete (an infrastructure error).
 |---|---|---|---|
 | 2026-05-18 | `scripts/run-sql.ts` (pg) | 13 / 13, 0 errored | `rls_cross_org.sql` — #1,#2,#2b,#4,#5,#6,#7,#7b,#10,#11,#12,#13,#14 |
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 5 / 5, 0 errored | `rls_within_org.sql` — R1,R2,R3,R4,R5 |
+| 2026-05-19 | `scripts/run-sql.ts` (pg) | 23 / 23, 0 errored | `rls_phase2.sql` — P1-P5, V1-V11, RW1-RW6, AN1 |

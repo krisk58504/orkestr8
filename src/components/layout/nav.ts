@@ -59,9 +59,9 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: "Operations",
     items: [
-      { label: "Maintenance", href: "/maintenance", icon: Wrench, enabled: false },
-      { label: "Work Orders", href: "/work-orders", icon: ClipboardList, enabled: false },
-      { label: "Vendors", href: "/vendors", icon: Truck, enabled: false },
+      { label: "Maintenance", href: "/maintenance", icon: Wrench, enabled: true },
+      { label: "Work Orders", href: "/work-orders", icon: ClipboardList, enabled: true },
+      { label: "Vendors", href: "/vendors", icon: Truck, enabled: true },
       { label: "Inspections", href: "/inspections", icon: ClipboardCheck, enabled: false },
     ],
   },

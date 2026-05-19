@@ -6,11 +6,19 @@
 import type {
   AiMode,
   BuildingStatus,
+  MaintenanceCategory,
+  MaintenancePriority,
+  MaintenanceStatus,
   OrganizationStatus,
   PropertyType,
   TenantStatus,
   UnitStatus,
   UserRole,
+  VendorDocumentType,
+  VendorInvoiceStatus,
+  VendorStatus,
+  WorkOrderAssignee,
+  WorkOrderStatus,
 } from "./types/app";
 
 /** Visual tone keys mapped to Badge styling by statusBadgeClass(). */
@@ -185,5 +193,105 @@ export const US_STATES: { value: string; label: string }[] = [
   ["WI", "Wisconsin"], ["WY", "Wyoming"], ["DC", "Washington, D.C."],
 ].map(([value, label]) => ({ value, label }));
 
+// ---------------------------------------------------------------------------
+// Phase 2 — maintenance, work orders, vendors
+// ---------------------------------------------------------------------------
+export const MAINTENANCE_PRIORITY_META: Record<
+  MaintenancePriority,
+  { label: string; tone: Tone }
+> = {
+  low: { label: "Low", tone: "neutral" },
+  medium: { label: "Medium", tone: "info" },
+  high: { label: "High", tone: "warning" },
+  emergency: { label: "Emergency", tone: "danger" },
+};
+
+export const MAINTENANCE_STATUS_META: Record<
+  MaintenanceStatus,
+  { label: string; tone: Tone }
+> = {
+  submitted: { label: "Submitted", tone: "info" },
+  triaged: { label: "Triaged", tone: "info" },
+  scheduled: { label: "Scheduled", tone: "info" },
+  in_progress: { label: "In Progress", tone: "warning" },
+  on_hold: { label: "On Hold", tone: "neutral" },
+  completed: { label: "Completed", tone: "success" },
+  cancelled: { label: "Cancelled", tone: "neutral" },
+};
+
+export const MAINTENANCE_CATEGORY_LABELS: Record<MaintenanceCategory, string> = {
+  plumbing: "Plumbing",
+  electrical: "Electrical",
+  hvac: "HVAC",
+  appliance: "Appliance",
+  structural: "Structural",
+  pest: "Pest Control",
+  landscaping: "Landscaping",
+  locks: "Locks & Keys",
+  general: "General",
+  other: "Other",
+};
+
+export const WORK_ORDER_STATUS_META: Record<
+  WorkOrderStatus,
+  { label: string; tone: Tone }
+> = {
+  open: { label: "Open", tone: "info" },
+  assigned: { label: "Assigned", tone: "info" },
+  accepted: { label: "Accepted", tone: "info" },
+  in_progress: { label: "In Progress", tone: "warning" },
+  on_hold: { label: "On Hold", tone: "neutral" },
+  completed: { label: "Completed", tone: "success" },
+  cancelled: { label: "Cancelled", tone: "neutral" },
+};
+
+export const WORK_ORDER_ASSIGNEE_LABELS: Record<WorkOrderAssignee, string> = {
+  unassigned: "Unassigned",
+  internal: "Internal Team",
+  vendor: "Vendor",
+};
+
+/** Work-order statuses that count as still-open work. */
+export const OPEN_WORK_ORDER_STATUSES: WorkOrderStatus[] = [
+  "open",
+  "assigned",
+  "accepted",
+  "in_progress",
+  "on_hold",
+];
+
+export const VENDOR_STATUS_META: Record<
+  VendorStatus,
+  { label: string; tone: Tone }
+> = {
+  pending: { label: "Pending", tone: "warning" },
+  active: { label: "Active", tone: "success" },
+  inactive: { label: "Inactive", tone: "neutral" },
+  suspended: { label: "Suspended", tone: "danger" },
+};
+
+export const VENDOR_DOCUMENT_TYPE_LABELS: Record<VendorDocumentType, string> = {
+  insurance: "Insurance",
+  license: "License",
+  w9: "W-9",
+  contract: "Contract",
+  certification: "Certification",
+  other: "Other",
+};
+
+export const VENDOR_INVOICE_STATUS_META: Record<
+  VendorInvoiceStatus,
+  { label: string; tone: Tone }
+> = {
+  draft: { label: "Draft", tone: "neutral" },
+  submitted: { label: "Submitted", tone: "info" },
+  approved: { label: "Approved", tone: "success" },
+  rejected: { label: "Rejected", tone: "danger" },
+  paid: { label: "Paid", tone: "success" },
+};
+
 export const APP_NAME = "PMS-Build";
 export const APP_TAGLINE = "The AI Operating System for Multifamily Property Management";
+
+/** Supabase Storage bucket for work-order photos (private, server-mediated). */
+export const WORK_ORDER_PHOTO_BUCKET = "work-order-photos";
