@@ -108,16 +108,36 @@ migration. Any change to one of them requires a fresh Gate 1 review.
 These must be resolved BEFORE the named phase ships — they are not optional
 cleanup.
 
-- **[BLOCKING — before any Phase 3 portal work]** The `users_select` policy
-  currently exposes every user row in an organization to any authenticated
-  member of that organization, via the `organization_id = current_user_org_id()`
-  branch, with **no role gate**. This is acceptable only while exclusively
-  staff hold an `organization_id`. Before any Phase 3 tenant / vendor / owner
-  portal ships — portal users will be given an `organization_id` — that branch
-  **MUST be gated behind `is_org_staff()`**. Otherwise a tenant or vendor
-  portal user would read the full staff and resident directory (names, emails,
-  phone numbers) of the organization. Shipping a portal without this change is
-  a Gate 1 regression.
+- **[RESOLVED 2026-05-19 — was BLOCKING for Phase 3 portal work]** The
+  `users_select` policy previously exposed every user row in an
+  organization to any authenticated member of that organization, via the
+  `organization_id = current_user_org_id()` branch, with **no role gate**.
+  That was tolerable only while exclusively staff held an
+  `organization_id`. The Phase 2 vendor portal ships now; later phases
+  widen the population of non-staff authenticated org members
+  (TENANT-role users, future tenant/owner portals).
+
+  **Fix applied:** migration
+  `20260519001400_users_select_staff_gate.sql` adds `AND is_org_staff()`
+  to the org-id branch. The final `users_select` USING clause is:
+
+  ```
+  ((id = auth.uid())
+   OR (organization_id = current_user_org_id() AND is_org_staff())
+   OR is_super_admin())
+  ```
+
+  Self-read (`id = auth.uid()`) is preserved — every user must always be
+  able to read their own row (handle_new_user / SessionContext depend on
+  it). Super-admin reach is unchanged.
+
+  **Verified by** `supabase/tests/users_select_staff_gate.sql` cases U1–U4
+  (hole closed: TENANT and VENDOR_ADMIN non-staff users with `org_id`
+  set see only their own row, not staff teammates) and U5–U8 (regression:
+  OWNER + PROPERTY_MANAGER still read every Org A user; cross-org
+  isolation still holds; self-read still works for non-staff; anon
+  denied). Full re-run of the cross-org, within-org, Phase 2, user-
+  columns-pin, and Phase 2 §8 closure suites passed with no regressions.
 
 ## 8. Phase 2 RLS gaps — review findings (all four RESOLVED 2026-05-19)
 

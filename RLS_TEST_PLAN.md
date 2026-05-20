@@ -3,8 +3,9 @@
 > **Status: EXECUTED — cross-org 13/13 (2026-05-18), within-org role
 > isolation R1–R5 5/5 (2026-05-19), Phase 2 (vendors / maintenance /
 > work orders) 23/23 (2026-05-19), user-columns pin (SECURITY_REVIEW.md
-> §8.4 fix) 10/10 (2026-05-19), and Phase 2 §8.1/§8.2/§8.3 closure 25/25
-> (2026-05-19); all passed, 0 errored. Total 76 assertions across 5 suites.**
+> §8.4 fix) 10/10 (2026-05-19), Phase 2 §8.1/§8.2/§8.3 closure 25/25
+> (2026-05-19), and users_select staff gate (SECURITY_REVIEW.md §7 fix)
+> 8/8 (2026-05-19); all passed, 0 errored. Total 84 assertions across 6 suites.**
 > Run against the dev database over the Session pooler connection. Human RLS
 > sign-off remains outstanding — see SECURITY_REVIEW.md.
 
@@ -129,6 +130,28 @@ closed AND legitimate vendor-portal behaviour preserved.
 | §8.2 regression | S4, S5, S7 | vendor CAN INSERT with `draft` / `submitted`; can UPDATE to `draft` |
 | §8.2 staff | S8, S9 | staff manager retains full status control (INSERT `approved`, UPDATE to `paid`) |
 
+## 4e. users_select staff gate (SECURITY_REVIEW.md §7 fix)
+
+Implemented in `supabase/tests/users_select_staff_gate.sql`. Verifies the
+fix from migration `20260519001400_users_select_staff_gate.sql`: the
+`users_select` policy's org-id branch is now gated by `is_org_staff()`,
+closing the Phase-3 portal cross-tenant directory disclosure.
+
+Fixtures: Org A with 2 staff (OWNER, PROPERTY_MANAGER) and 2 non-staff
+with `organization_id` set (TENANT, VENDOR_ADMIN — the attack vectors);
+Org B with 1 staff (OWNER) for cross-org regression.
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| U1 | TENANT (non-staff, org_id set) | `select * from users` | ✅ 1 row — own only |
+| U2 | TENANT | `select … where id = auth.uid()` | ✅ self-read works |
+| U3 | TENANT | `select … where id in (<staff ids>)` | ✅ 0 rows |
+| U4 | VENDOR_ADMIN (vendor-portal, non-staff) | `select * from users` | ✅ 1 row — own only |
+| U5 | OWNER (staff) | `select … where organization_id = own org` | ✅ 4 rows |
+| U6 | PROPERTY_MANAGER (staff) | `select … where organization_id = own org` | ✅ 4 rows |
+| U7 | OWNER@A | `select … where organization_id = Org B` | ✅ 0 rows (cross-org) |
+| U8 | anon | `select * from users` | ✅ 0 rows / denied |
+
 ## 5. How to run
 
 ```bash
@@ -138,6 +161,7 @@ npx tsx scripts/run-sql.ts supabase/tests/rls_within_org.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase2.sql
 npx tsx scripts/run-sql.ts supabase/tests/user_columns_pin.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase2_blockers_closed.sql
+npx tsx scripts/run-sql.ts supabase/tests/users_select_staff_gate.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -157,3 +181,5 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 13 / 13, 5 / 5, 23 / 23, 0 errored | full re-run after §8.4 migration — no regressions in prior suites |
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 25 / 25, 0 errored | `rls_phase2_blockers_closed.sql` — R1-R8, C1-C8, S1-S9 (§8.1/§8.2/§8.3 fixes) |
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 13 / 13, 5 / 5, 23 / 23, 10 / 10, 0 errored | full re-run after §8.1/§8.2/§8.3 migrations — no regressions in prior suites |
+| 2026-05-19 | `scripts/run-sql.ts` (pg) | 8 / 8, 0 errored | `users_select_staff_gate.sql` — U1-U8 (§7 fix) |
+| 2026-05-19 | `scripts/run-sql.ts` (pg) | 13 / 13, 5 / 5, 23 / 23, 10 / 10, 25 / 25, 0 errored | full re-run after §7 migration — no regressions in prior suites |
