@@ -18,6 +18,9 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-sidebar-bg-active: var(--sidebar-bg-active);
+  --color-sidebar-ink-active: var(--sidebar-ink-active);
+  --color-sidebar-icon-active: var(--sidebar-icon-active);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -91,6 +94,9 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #1a1633;
   --sidebar-ring: #7c3aed;
+  --sidebar-bg-active: rgba(124, 58, 237, 0.15);
+  --sidebar-ink-active: #a78bfa;
+  --sidebar-icon-active: #7c3aed;
   --success: #047857;
   --success-foreground: #ffffff;
   --warning: #d97706;
@@ -135,6 +141,9 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #1a1633;
   --sidebar-ring: #7c3aed;
+  --sidebar-bg-active: rgba(124, 58, 237, 0.15);
+  --sidebar-ink-active: #a78bfa;
+  --sidebar-icon-active: #7c3aed;
   --success: #00d9a3;
   --success-foreground: #0a0a0f;
   --warning: #fbbf24;

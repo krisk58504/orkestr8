@@ -45,7 +45,7 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
                     className={cn(
                       "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                       active
-                        ? "bg-accent font-medium text-accent-foreground"
+                        ? "bg-sidebar-bg-active font-medium text-sidebar-ink-active [&_svg]:text-sidebar-icon-active"
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                     )}
                   >
