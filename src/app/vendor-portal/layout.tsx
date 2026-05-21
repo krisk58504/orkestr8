@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { Truck } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { VendorPortalNav } from "@/components/vendor-portal/vendor-portal-nav";
 import { VendorUserMenu } from "@/components/vendor-portal/vendor-user-menu";
 import { isVendorUser } from "@/lib/auth/roles";
@@ -65,7 +66,8 @@ export default async function VendorPortalLayout({
               Vendor Portal
             </span>
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <ThemeToggle />
             <VendorUserMenu
               name={name}
               email={context.email}

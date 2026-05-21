@@ -1,6 +1,7 @@
 import { Bell, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { ROLE_LABELS } from "@/lib/constants";
 import type { SessionContext } from "@/lib/types/app";
 import { MobileNav } from "./mobile-nav";
@@ -28,6 +29,7 @@ export function Topbar({ context }: { context: SessionContext }) {
         <Button variant="ghost" size="icon" aria-label="Notifications">
           <Bell className="size-5" />
         </Button>
+        <ThemeToggle />
         <UserMenu
           name={name}
           email={context.email}

@@ -14,11 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { getSessionContext } from "@/lib/auth/session";
-import {
-  PROPERTY_TYPE_LABELS,
-  UNIT_STATUS_META,
-  type Tone,
-} from "@/lib/constants";
+import { PROPERTY_TYPE_LABELS, UNIT_STATUS_META } from "@/lib/constants";
 import {
   getDashboardStats,
   getRecentProperties,
@@ -26,14 +22,6 @@ import {
 } from "@/lib/data/dashboard";
 
 export const metadata: Metadata = { title: "Dashboard" };
-
-const TONE_HEX: Record<Tone, string> = {
-  neutral: "#94a3b8",
-  info: "#3b82f6",
-  success: "#10b981",
-  warning: "#f59e0b",
-  danger: "#ef4444",
-};
 
 export default async function DashboardPage() {
   const context = await getSessionContext();
@@ -50,7 +38,7 @@ export default async function DashboardPage() {
   const chartData = breakdown.map((b) => ({
     name: UNIT_STATUS_META[b.status].label,
     value: b.count,
-    fill: TONE_HEX[UNIT_STATUS_META[b.status].tone],
+    tone: UNIT_STATUS_META[b.status].tone,
   }));
 
   return (
