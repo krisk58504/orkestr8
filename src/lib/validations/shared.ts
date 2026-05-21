@@ -83,6 +83,37 @@ export const optionalDateTime = z
     "Enter a valid date and time.",
   );
 
+/** Required ID reference — rejects empty / "none" / non-uuid input. */
+export function requiredId(label = "an option") {
+  return z
+    .string()
+    .trim()
+    .regex(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      `Select ${label}.`,
+    );
+}
+
+/** Required ISO date string — rejects empty input. */
+export const requiredDate = z
+  .string()
+  .trim()
+  .min(1, "Date is required.")
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date.");
+
+/** Required non-negative decimal number. */
+export function requiredDecimal(max = 100_000_000) {
+  return z
+    .string()
+    .trim()
+    .min(1, "Amount is required.")
+    .transform((v) => Number(v))
+    .refine(
+      (v) => Number.isFinite(v) && v >= 0 && v <= max,
+      "Enter a valid amount.",
+    );
+}
+
 /** Collapse a ZodError into the first message per top-level field. */
 export function collectFieldErrors(
   error: z.ZodError,
