@@ -33,6 +33,7 @@ export type MaintenanceRequest = Tables<"maintenance_requests">;
 export type WorkOrder = Tables<"work_orders">;
 export type WorkOrderPhoto = Tables<"work_order_photos">;
 export type EmailLog = Tables<"email_log">;
+export type Lease = Tables<"leases">;
 
 export type UserRole = Enums<"user_role">;
 export type AiMode = Enums<"ai_mode">;
@@ -50,6 +51,7 @@ export type WorkOrderAssignee = Enums<"work_order_assignee">;
 export type VendorStatus = Enums<"vendor_status">;
 export type VendorDocumentType = Enums<"vendor_document_type">;
 export type VendorInvoiceStatus = Enums<"vendor_invoice_status">;
+export type LeaseStatus = Enums<"lease_status">;
 
 /** Resolved identity for the signed-in user, loaded once per request. */
 export type SessionContext = {
