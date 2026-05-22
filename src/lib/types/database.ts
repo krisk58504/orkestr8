@@ -739,6 +739,19 @@ export type Database = {
         Args: { p_name: string; p_slug?: string };
         Returns: Database["public"]["Tables"]["organizations"]["Row"];
       };
+      create_lease_with_tenants: {
+        Args: {
+          p_organization_id: string;
+          p_unit_id: string;
+          p_start_date: string;
+          p_end_date: string | null;
+          p_monthly_rent: number;
+          p_status?: Database["public"]["Enums"]["lease_status"];
+          p_notes?: string | null;
+          p_tenant_ids?: string[];
+        };
+        Returns: string;
+      };
       current_user_org_id: { Args: Record<string, never>; Returns: string | null };
       is_super_admin: { Args: Record<string, never>; Returns: boolean };
       is_org_staff: { Args: Record<string, never>; Returns: boolean };
