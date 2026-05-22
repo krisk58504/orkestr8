@@ -40,6 +40,7 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    prefetch={false}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
                     className={cn(
