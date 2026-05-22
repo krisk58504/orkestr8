@@ -53,7 +53,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Buildings", href: "/buildings", icon: Building, enabled: true },
       { label: "Units", href: "/units", icon: DoorOpen, enabled: true },
       { label: "Tenants", href: "/tenants", icon: Users, enabled: true },
-      { label: "Leases", href: "/leases", icon: FileText, enabled: false },
+      { label: "Leases", href: "/leases", icon: FileText, enabled: true },
     ],
   },
   {

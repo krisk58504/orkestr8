@@ -6,6 +6,7 @@
 import type {
   AiMode,
   BuildingStatus,
+  LeaseStatus,
   MaintenanceCategory,
   MaintenancePriority,
   MaintenanceStatus,
@@ -151,6 +152,12 @@ export const TENANT_STATUS_META: Record<TenantStatus, { label: string; tone: Ton
   notice: { label: "On Notice", tone: "warning" },
   past: { label: "Past", tone: "neutral" },
   evicted: { label: "Evicted", tone: "danger" },
+};
+
+export const LEASE_STATUS_META: Record<LeaseStatus, { label: string; tone: Tone }> = {
+  upcoming: { label: "Upcoming", tone: "info" },
+  active: { label: "Active", tone: "success" },
+  ended: { label: "Ended", tone: "neutral" },
 };
 
 export const BUILDING_STATUS_META: Record<
