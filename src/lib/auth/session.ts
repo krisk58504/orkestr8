@@ -38,18 +38,19 @@ export const getSessionContext = cache(
       .single();
     if (!profile || !profile.organization_id) return null;
 
-    const { data: organization } = await supabase
-      .from("organizations")
-      .select("*")
-      .eq("id", profile.organization_id)
-      .single();
+    const [{ data: organization }, { data: roleRows }] = await Promise.all([
+      supabase
+        .from("organizations")
+        .select("*")
+        .eq("id", profile.organization_id)
+        .single(),
+      supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("organization_id", profile.organization_id),
+    ]);
     if (!organization) return null;
-
-    const { data: roleRows } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("organization_id", profile.organization_id);
 
     return {
       authUserId: user.id,
