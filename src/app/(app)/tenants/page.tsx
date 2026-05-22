@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { canWriteTenants } from "@/lib/auth/roles";
 import { getSessionContext } from "@/lib/auth/session";
 import { listTenantFormOptions, listTenants } from "@/lib/data/tenants";
+import { perfEnd, perfStart } from "@/lib/perf";
 
 export const metadata: Metadata = { title: "Tenants" };
 
@@ -11,10 +12,12 @@ export default async function TenantsPage() {
   const context = await getSessionContext();
   if (!context) return null;
 
+  const perfT = perfStart();
   const [tenants, formOptions] = await Promise.all([
     listTenants(context.organization.id),
     listTenantFormOptions(context.organization.id),
   ]);
+  perfEnd("tenants.page.data", perfT, "/tenants");
 
   return (
     <div className="space-y-6">

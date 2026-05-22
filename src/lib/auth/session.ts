@@ -12,6 +12,7 @@
 import "server-only";
 import { cache } from "react";
 import type { User } from "@supabase/supabase-js";
+import { perfEnd, perfStart } from "@/lib/perf";
 import { createClient } from "@/lib/supabase/server";
 import type { SessionContext, UserRole } from "@/lib/types/app";
 
@@ -25,40 +26,52 @@ export const getAuthUser = cache(async (): Promise<User | null> => {
 
 export const getSessionContext = cache(
   async (): Promise<SessionContext | null> => {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return null;
+    const perfT = perfStart();
+    try {
+      const supabase = await createClient();
 
-    const { data: profile } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", user.id)
-      .single();
-    if (!profile || !profile.organization_id) return null;
+      const perfGetUser = perfStart();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      perfEnd("session.auth.getUser", perfGetUser);
+      if (!user) return null;
 
-    const [{ data: organization }, { data: roleRows }] = await Promise.all([
-      supabase
-        .from("organizations")
+      const perfUsers = perfStart();
+      const { data: profile } = await supabase
+        .from("users")
         .select("*")
-        .eq("id", profile.organization_id)
-        .single(),
-      supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .eq("organization_id", profile.organization_id),
-    ]);
-    if (!organization) return null;
+        .eq("id", user.id)
+        .single();
+      perfEnd("session.users", perfUsers);
+      if (!profile || !profile.organization_id) return null;
 
-    return {
-      authUserId: user.id,
-      email: user.email ?? profile.email,
-      profile,
-      organization,
-      roles: (roleRows ?? []).map((r) => r.role as UserRole),
-      vendorId: profile.vendor_id,
-    };
+      const perfOrgRoles = perfStart();
+      const [{ data: organization }, { data: roleRows }] = await Promise.all([
+        supabase
+          .from("organizations")
+          .select("*")
+          .eq("id", profile.organization_id)
+          .single(),
+        supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .eq("organization_id", profile.organization_id),
+      ]);
+      perfEnd("session.org+roles", perfOrgRoles);
+      if (!organization) return null;
+
+      return {
+        authUserId: user.id,
+        email: user.email ?? profile.email,
+        profile,
+        organization,
+        roles: (roleRows ?? []).map((r) => r.role as UserRole),
+        vendorId: profile.vendor_id,
+      };
+    } finally {
+      perfEnd("session.total", perfT);
+    }
   },
 );
