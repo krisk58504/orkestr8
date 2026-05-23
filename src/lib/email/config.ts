@@ -22,6 +22,23 @@ export function normalizeAddress(address: string): string {
 }
 
 /**
+ * Comparison form of an address for the allowlist check: a normalized address
+ * with any plus-tag stripped from the local-part. Gmail (and most providers)
+ * route every plus-aliased form to the same inbox, so for the purposes of
+ * deciding "is this person on the allowlist?" they're the same address.
+ * Used ONLY by isRecipientAllowed — the address handed to the email provider
+ * keeps its plus-tag so the provider delivers to the right alias.
+ */
+function stripPlusTag(normalized: string): string {
+  const atIdx = normalized.indexOf("@");
+  if (atIdx <= 0) return normalized;
+  const local = normalized.slice(0, atIdx);
+  const domain = normalized.slice(atIdx);
+  const plusIdx = local.indexOf("+");
+  return plusIdx === -1 ? normalized : `${local.slice(0, plusIdx)}${domain}`;
+}
+
+/**
  * Parsed APPROVED_TEST_EMAILS allowlist (comma- or whitespace-separated).
  * Empty when the env var is unset — which, in test mode, blocks all sends.
  */
@@ -36,11 +53,16 @@ export function getApprovedTestEmails(): string[] {
 /**
  * Whether `address` may receive mail under the current mode.
  * - production: any address is permitted (a human raised the mode).
- * - test: only addresses on the APPROVED_TEST_EMAILS allowlist.
+ * - test: only addresses on the APPROVED_TEST_EMAILS allowlist. Plus-tag
+ *   aliases are treated as the same inbox as their base address — a single
+ *   allowlist entry covers every +alias of itself.
  */
 export function isRecipientAllowed(address: string): boolean {
   if (getEmailMode() === "production") return true;
-  return getApprovedTestEmails().includes(normalizeAddress(address));
+  const recipientBase = stripPlusTag(normalizeAddress(address));
+  return getApprovedTestEmails()
+    .map(stripPlusTag)
+    .includes(recipientBase);
 }
 
 /**
