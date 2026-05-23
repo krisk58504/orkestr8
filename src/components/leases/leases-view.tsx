@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CircleStop, FileText, Plus } from "lucide-react";
 import {
   DataTable,
   type DataTableColumn,
@@ -9,12 +10,14 @@ import {
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { LEASE_STATUS_META } from "@/lib/constants";
 import type { LeaseRow } from "@/lib/data/leases";
 import { LEASE_STATUS_VALUES } from "@/lib/validations/lease";
+import { EndLeaseDialog } from "./end-lease-dialog";
 import { LeaseFormSheet } from "./lease-form-sheet";
 
-function formatTenants(
+export function formatTenants(
   tenants: { first_name: string; last_name: string }[],
 ): string {
   if (tenants.length === 0) return "—";
@@ -44,8 +47,10 @@ export function LeasesView({
   }[];
   canManage: boolean;
 }) {
+  const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<LeaseRow | null>(null);
+  const [endingLease, setEndingLease] = useState<LeaseRow | null>(null);
 
   function openNew() {
     setEditing(null);
@@ -129,6 +134,17 @@ export function LeasesView({
           matches: (l, v) => l.status === v,
         }}
         onEdit={canManage ? openEdit : undefined}
+        rowActions={
+          canManage
+            ? (lease) =>
+                lease.status === "ended" ? null : (
+                  <DropdownMenuItem onClick={() => setEndingLease(lease)}>
+                    <CircleStop className="size-4" />
+                    End lease
+                  </DropdownMenuItem>
+                )
+            : undefined
+        }
         toolbar={
           canManage ? (
             <Button onClick={openNew}>
@@ -154,14 +170,24 @@ export function LeasesView({
         }
       />
       {canManage ? (
-        <LeaseFormSheet
-          open={sheetOpen}
-          onOpenChange={setSheetOpen}
-          lease={editing}
-          propertyOptions={propertyOptions}
-          unitOptions={unitOptions}
-          tenantOptions={tenantOptions}
-        />
+        <>
+          <LeaseFormSheet
+            open={sheetOpen}
+            onOpenChange={setSheetOpen}
+            lease={editing}
+            propertyOptions={propertyOptions}
+            unitOptions={unitOptions}
+            tenantOptions={tenantOptions}
+          />
+          <EndLeaseDialog
+            open={endingLease !== null}
+            onOpenChange={(open) => {
+              if (!open) setEndingLease(null);
+            }}
+            lease={endingLease}
+            onSuccess={() => router.refresh()}
+          />
+        </>
       ) : null}
     </>
   );

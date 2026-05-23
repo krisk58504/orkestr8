@@ -72,6 +72,11 @@ type DataTableProps<T> = {
   onEdit?: (row: T) => void;
   onDelete?: (row: T) => void | Promise<void>;
   deleteLabel?: (row: T) => string;
+  /**
+   * Extra per-row menu items rendered between Edit and Delete in the kebab.
+   * Caller supplies `<DropdownMenuItem>` children, or null to omit for a row.
+   */
+  rowActions?: (row: T) => React.ReactNode;
   pageSize?: number;
   toolbar?: React.ReactNode;
   emptyState: React.ReactNode;
@@ -87,6 +92,7 @@ export function DataTable<T>({
   onEdit,
   onDelete,
   deleteLabel,
+  rowActions,
   pageSize = 10,
   toolbar,
   emptyState,
@@ -98,7 +104,7 @@ export function DataTable<T>({
   );
   const [page, setPage] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<T | null>(null);
-  const hasActions = Boolean(onEdit || onDelete);
+  const hasActions = Boolean(onEdit || onDelete || rowActions);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -271,6 +277,7 @@ export function DataTable<T>({
                               Edit
                             </DropdownMenuItem>
                           ) : null}
+                          {rowActions ? rowActions(row) : null}
                           {onDelete ? (
                             <DropdownMenuItem
                               variant="destructive"
