@@ -15,7 +15,12 @@
  */
 import "server-only";
 import { Resend } from "resend";
-import { getEmailMode, getFromAddress, isRecipientAllowed } from "./config";
+import {
+  getEmailMode,
+  getFromAddress,
+  isRecipientAllowed,
+  normalizeAddress,
+} from "./config";
 import { checkRecentDuplicate, logEmailAttempt } from "./log";
 import type { EmailSendResult, OutboundEmail } from "./types";
 
@@ -107,9 +112,13 @@ export async function deliverViaResend(
   }
 
   const resend = new Resend(apiKey);
+  // Normalize for the Resend handoff only — Resend's sandbox sender does an
+  // exact-case match against the verified account email, while RFC-5321 makes
+  // the local-part case-insensitive. email_log keeps the original input on
+  // email.to for audit fidelity (so future queries can match user state).
   const { data, error } = await resend.emails.send({
     from: getFromAddress(),
-    to: email.to,
+    to: normalizeAddress(email.to),
     subject: email.content.subject,
     html: email.content.html,
     text: email.content.text,
