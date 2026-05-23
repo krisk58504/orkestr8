@@ -36,3 +36,8 @@ export function isOwner(roles: UserRole[]): boolean {
 export function isVendorUser(roles: UserRole[]): boolean {
   return hasAnyRole(roles, ["VENDOR_ADMIN", "VENDOR_TECH"]);
 }
+
+/** External resident user (tenant portal). */
+export function isTenantUser(roles: UserRole[]): boolean {
+  return hasAnyRole(roles, ["TENANT"]);
+}

@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { perfEnd, perfStart } from "@/lib/perf";
 import type { Database } from "@/lib/types/database";
 
-const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/error"];
+const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/error", "/invite"];
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/") return true;

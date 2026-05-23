@@ -784,6 +784,15 @@ export type Database = {
         };
         Returns: string;
       };
+      accept_tenant_invite: {
+        Args: { p_token_hash: string; p_user_id: string };
+        Returns: {
+          ok: boolean;
+          error_code: string | null;
+          tenant_id: string | null;
+          organization_id: string | null;
+        }[];
+      };
       current_user_org_id: { Args: Record<string, never>; Returns: string | null };
       is_super_admin: { Args: Record<string, never>; Returns: boolean };
       is_org_staff: { Args: Record<string, never>; Returns: boolean };
