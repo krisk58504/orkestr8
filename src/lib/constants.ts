@@ -12,6 +12,7 @@ import type {
   MaintenanceStatus,
   OrganizationStatus,
   PropertyType,
+  TenantInviteStatus,
   TenantStatus,
   UnitStatus,
   UserRole,
@@ -152,6 +153,17 @@ export const TENANT_STATUS_META: Record<TenantStatus, { label: string; tone: Ton
   notice: { label: "On Notice", tone: "warning" },
   past: { label: "Past", tone: "neutral" },
   evicted: { label: "Evicted", tone: "danger" },
+};
+
+export const PORTAL_ACCESS_META: Record<
+  TenantInviteStatus,
+  { label: string; tone: Tone }
+> = {
+  accepted: { label: "Active", tone: "success" },
+  pending: { label: "Invite pending", tone: "info" },
+  expired: { label: "Invite expired", tone: "neutral" },
+  revoked: { label: "Invite revoked", tone: "neutral" },
+  none: { label: "Not invited", tone: "neutral" },
 };
 
 export const LEASE_STATUS_META: Record<LeaseStatus, { label: string; tone: Tone }> = {

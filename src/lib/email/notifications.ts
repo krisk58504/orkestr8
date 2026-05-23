@@ -20,6 +20,7 @@ import { sendEmail } from "./send";
 import {
   EMAIL_TEMPLATE,
   maintenanceRequestReceivedEmail,
+  tenantInviteEmail,
   vendorInvoiceSubmittedEmail,
   workOrderAssignedEmail,
   workOrderStatusChangedEmail,
@@ -111,6 +112,37 @@ export async function notifyMaintenanceRequestReceived(params: {
     }),
     relatedEntityType: "maintenance_request",
     relatedEntityId: params.requestId,
+  });
+}
+
+/** Invite a tenant to the portal — the recipient gets a link with a raw token. */
+export async function notifyTenantInvited(params: {
+  organizationId: string;
+  inviteId: string;
+  tenantEmail: string;
+  tenantFirstName: string;
+  orgName: string;
+  propertyName: string | null;
+  unitNumber: string | null;
+  invitedByName: string;
+  acceptUrl: string;
+  expiresAt: string;
+}): Promise<NotifyResult> {
+  return sendEmail({
+    to: params.tenantEmail,
+    organizationId: params.organizationId,
+    template: EMAIL_TEMPLATE.tenantInvite,
+    content: tenantInviteEmail({
+      tenantFirstName: params.tenantFirstName,
+      orgName: params.orgName,
+      propertyName: params.propertyName,
+      unitNumber: params.unitNumber,
+      invitedByName: params.invitedByName,
+      acceptUrl: params.acceptUrl,
+      expiresAt: params.expiresAt,
+    }),
+    relatedEntityType: "tenant_invite",
+    relatedEntityId: params.inviteId,
   });
 }
 

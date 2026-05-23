@@ -13,6 +13,7 @@ export const EMAIL_TEMPLATE = {
   workOrderStatusChanged: "work_order.status_changed",
   maintenanceRequestReceived: "maintenance_request.received",
   vendorInvoiceSubmitted: "vendor_invoice.submitted",
+  tenantInvite: "tenant.invite",
 } as const;
 
 export type EmailTemplateId =
@@ -199,5 +200,50 @@ A vendor has submitted an invoice for review:
 ${detailsText(rows)}
 
 Review and approve it from the vendor's record.`;
+  return { subject, html, text };
+}
+
+// --- Tenant portal invite -------------------------------------------------
+
+export type TenantInviteData = {
+  tenantFirstName: string;
+  orgName: string;
+  propertyName: string | null;
+  unitNumber: string | null;
+  invitedByName: string;
+  acceptUrl: string;
+  /** ISO date — when the invite stops being valid. */
+  expiresAt: string;
+};
+
+export function tenantInviteEmail(data: TenantInviteData): EmailContent {
+  const rows: [string, string][] = [
+    ["Property", data.propertyName ?? "—"],
+  ];
+  if (data.unitNumber) rows.push(["Unit", data.unitNumber]);
+  rows.push(["Invited by", data.invitedByName]);
+  rows.push(["Expires", data.expiresAt]);
+
+  const subject = `You're invited to the ${data.orgName} tenant portal`;
+  const cta = `<p style="margin:16px 0;">
+    <a href="${data.acceptUrl}" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;border-radius:6px;text-decoration:none;font-size:14px;font-weight:bold;">Accept invite</a>
+  </p>`;
+  const html = layout(
+    "Tenant portal invite",
+    paragraph(`Hello ${data.tenantFirstName}, ${data.invitedByName} at ${data.orgName} has invited you to your tenant portal.`) +
+      paragraph("Use the link below to set up your account and start tracking your lease, maintenance requests, and messages.") +
+      cta +
+      detailsHtml(rows) +
+      paragraph(`This invite expires on ${data.expiresAt}. If you weren't expecting this email, you can safely ignore it — no account will be created until you click the link.`),
+  );
+  const text = `Hello ${data.tenantFirstName},
+
+${data.invitedByName} at ${data.orgName} has invited you to your tenant portal.
+
+Accept your invite: ${data.acceptUrl}
+
+${detailsText(rows)}
+
+This invite expires on ${data.expiresAt}. If you weren't expecting this email, you can safely ignore it — no account will be created until you click the link.`;
   return { subject, html, text };
 }

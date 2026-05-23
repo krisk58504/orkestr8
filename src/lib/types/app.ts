@@ -44,6 +44,16 @@ export type PropertyType = Enums<"property_type">;
 export type BuildingStatus = Enums<"building_status">;
 export type UnitStatus = Enums<"unit_status">;
 export type TenantStatus = Enums<"tenant_status">;
+/**
+ * Derived portal-access state for a tenant — not a DB enum. Computed from
+ * tenant.user_id + their most recent tenant_invites row in listTenants().
+ */
+export type TenantInviteStatus =
+  | "accepted"
+  | "pending"
+  | "expired"
+  | "revoked"
+  | "none";
 export type MaintenanceStatus = Enums<"maintenance_status">;
 export type MaintenancePriority = Enums<"maintenance_priority">;
 export type MaintenanceCategory = Enums<"maintenance_category">;

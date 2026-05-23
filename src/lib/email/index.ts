@@ -14,6 +14,7 @@ export {
   workOrderStatusChangedEmail,
   maintenanceRequestReceivedEmail,
   vendorInvoiceSubmittedEmail,
+  tenantInviteEmail,
 } from "./templates";
 export type {
   EmailTemplateId,
@@ -21,6 +22,7 @@ export type {
   WorkOrderStatusChangedData,
   MaintenanceRequestReceivedData,
   VendorInvoiceSubmittedData,
+  TenantInviteData,
 } from "./templates";
 export type {
   DuplicateCheck,
