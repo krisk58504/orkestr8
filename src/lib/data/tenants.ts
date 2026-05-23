@@ -17,7 +17,7 @@ export async function listTenants(orgId: string): Promise<TenantRow[]> {
   try {
     const supabase = await createClient();
 
-    const [tenants, properties, units, invites] = await Promise.all([
+    const [tenants, properties, units, invites, leases] = await Promise.all([
       supabase
         .from("tenants")
         .select("*")
@@ -30,13 +30,17 @@ export async function listTenants(orgId: string): Promise<TenantRow[]> {
         .eq("organization_id", orgId),
       supabase
         .from("units")
-        .select("id, unit_number")
+        .select("id, unit_number, property_id")
         .eq("organization_id", orgId),
       supabase
         .from("tenant_invites")
         .select("id, tenant_id, email, expires_at, accepted_at, revoked_at, created_at")
         .eq("organization_id", orgId)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("leases")
+        .select("id, unit_id")
+        .eq("organization_id", orgId),
     ]);
 
     const propertyNames = new Map<string, string>();
@@ -45,8 +49,16 @@ export async function listTenants(orgId: string): Promise<TenantRow[]> {
     }
 
     const unitNumbers = new Map<string, string>();
+    const unitPropertyIds = new Map<string, string>();
     for (const unit of units.data ?? []) {
       unitNumbers.set(unit.id, unit.unit_number);
+      unitPropertyIds.set(unit.id, unit.property_id);
+    }
+
+    // lease.id → lease.unit_id, used for the lease-mediated unit derivation.
+    const leaseUnitIds = new Map<string, string>();
+    for (const lease of leases.data ?? []) {
+      leaseUnitIds.set(lease.id, lease.unit_id);
     }
 
     // Most-recent invite per tenant. The query orders DESC, so first-wins.
@@ -101,13 +113,25 @@ export async function listTenants(orgId: string): Promise<TenantRow[]> {
         };
       }
 
+      // Lease is the primary source of truth for unit/property; fall back to
+      // the direct tenant.unit_id / tenant.property_id columns otherwise. Keeps
+      // the staff list aligned with the tenant-portal welcome page.
+      const leaseUnitId = tenant.lease_id
+        ? leaseUnitIds.get(tenant.lease_id) ?? null
+        : null;
+      const effectiveUnitId = leaseUnitId ?? tenant.unit_id ?? null;
+      const effectivePropertyId =
+        (effectiveUnitId ? unitPropertyIds.get(effectiveUnitId) ?? null : null) ??
+        tenant.property_id ??
+        null;
+
       return {
         ...tenant,
-        property_name: tenant.property_id
-          ? (propertyNames.get(tenant.property_id) ?? null)
+        property_name: effectivePropertyId
+          ? (propertyNames.get(effectivePropertyId) ?? null)
           : null,
-        unit_number: tenant.unit_id
-          ? (unitNumbers.get(tenant.unit_id) ?? null)
+        unit_number: effectiveUnitId
+          ? (unitNumbers.get(effectiveUnitId) ?? null)
           : null,
         invite_status,
         current_invite,

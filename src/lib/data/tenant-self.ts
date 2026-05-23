@@ -11,9 +11,13 @@ export type TenantSelfRow = {
 
 /**
  * Resolve the current tenant user's own tenant record + linked unit, property,
- * and lease. Uses the cookie-bound (anon) client so RLS enforces self-only
- * access — the policies on tenants/units/properties/leases each include a
- * tenant-self branch keyed on tenants.user_id = auth.uid().
+ * and lease. Lease is the primary source of truth for unit/property — fall
+ * back to tenants.unit_id / tenants.property_id only when the lease path
+ * doesn't resolve.
+ *
+ * Uses the cookie-bound (anon) client so RLS enforces self-only access. The
+ * tenant-self branches on units/properties cover both the direct path
+ * (tenants.unit_id) and the lease-mediated path (tenants.lease_id → leases.unit_id).
  */
 export async function getTenantSelf(
   authUserId: string,
@@ -27,34 +31,36 @@ export async function getTenantSelf(
     .maybeSingle();
   if (!tenant) return null;
 
-  const [unitRes, propertyRes, leaseRes] = await Promise.all([
-    tenant.unit_id
-      ? supabase
-          .from("units")
-          .select("id, unit_number")
-          .eq("id", tenant.unit_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-    tenant.property_id
-      ? supabase
-          .from("properties")
-          .select("id, name")
-          .eq("id", tenant.property_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-    tenant.lease_id
-      ? supabase
-          .from("leases")
-          .select("*")
-          .eq("id", tenant.lease_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
+  const { data: lease } = tenant.lease_id
+    ? await supabase
+        .from("leases")
+        .select("*")
+        .eq("id", tenant.lease_id)
+        .maybeSingle()
+    : { data: null };
+
+  const unitId = lease?.unit_id ?? tenant.unit_id;
+  const { data: unit } = unitId
+    ? await supabase
+        .from("units")
+        .select("id, unit_number, property_id")
+        .eq("id", unitId)
+        .maybeSingle()
+    : { data: null };
+
+  const propertyId = unit?.property_id ?? tenant.property_id;
+  const { data: property } = propertyId
+    ? await supabase
+        .from("properties")
+        .select("id, name")
+        .eq("id", propertyId)
+        .maybeSingle()
+    : { data: null };
 
   return {
     tenant,
-    unit: unitRes.data ?? null,
-    property: propertyRes.data ?? null,
-    lease: leaseRes.data ?? null,
+    unit: unit ? { id: unit.id, unit_number: unit.unit_number } : null,
+    property,
+    lease,
   };
 }
