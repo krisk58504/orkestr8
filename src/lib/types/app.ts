@@ -20,6 +20,7 @@ export type Property = Tables<"properties">;
 export type Building = Tables<"buildings">;
 export type Unit = Tables<"units">;
 export type Tenant = Tables<"tenants">;
+export type TenantInvite = Tables<"tenant_invites">;
 export type AuditLog = Tables<"audit_logs">;
 export type Notification = Tables<"notifications">;
 export type AiLog = Tables<"ai_logs">;
