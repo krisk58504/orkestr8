@@ -1,15 +1,18 @@
 "use client";
 
-import { FileText } from "lucide-react";
+import { useState } from "react";
+import { FileText, Plus } from "lucide-react";
 import {
   DataTable,
   type DataTableColumn,
 } from "@/components/shared/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Button } from "@/components/ui/button";
 import { LEASE_STATUS_META } from "@/lib/constants";
 import type { LeaseRow } from "@/lib/data/leases";
 import { LEASE_STATUS_VALUES } from "@/lib/validations/lease";
+import { LeaseFormSheet } from "./lease-form-sheet";
 
 function formatTenants(
   tenants: { first_name: string; last_name: string }[],
@@ -23,7 +26,37 @@ function formatTenants(
   return `${first} + ${tenants.length - 1} others`;
 }
 
-export function LeasesView({ leases }: { leases: LeaseRow[] }) {
+export function LeasesView({
+  leases,
+  propertyOptions,
+  unitOptions,
+  tenantOptions,
+  canManage,
+}: {
+  leases: LeaseRow[];
+  propertyOptions: { id: string; name: string }[];
+  unitOptions: { id: string; unit_number: string; property_id: string }[];
+  tenantOptions: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    lease_id: string | null;
+  }[];
+  canManage: boolean;
+}) {
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editing, setEditing] = useState<LeaseRow | null>(null);
+
+  function openNew() {
+    setEditing(null);
+    setSheetOpen(true);
+  }
+
+  function openEdit(lease: LeaseRow) {
+    setEditing(lease);
+    setSheetOpen(true);
+  }
+
   const columns: DataTableColumn<LeaseRow>[] = [
     {
       id: "unit",
@@ -76,31 +109,60 @@ export function LeasesView({ leases }: { leases: LeaseRow[] }) {
   ];
 
   return (
-    <DataTable
-      rows={leases}
-      columns={columns}
-      getRowId={(l) => l.id}
-      searchText={(l) =>
-        `${l.unit_number ?? ""} ${l.property_name ?? ""} ${l.tenants
-          .map((t) => `${t.first_name} ${t.last_name}`)
-          .join(" ")}`
-      }
-      searchPlaceholder="Search leases…"
-      facet={{
-        label: "Status",
-        options: LEASE_STATUS_VALUES.map((s) => ({
-          value: s,
-          label: LEASE_STATUS_META[s].label,
-        })),
-        matches: (l, v) => l.status === v,
-      }}
-      emptyState={
-        <EmptyState
-          icon={FileText}
-          title="No leases yet"
-          description="Leases will appear here once they're created."
+    <>
+      <DataTable
+        rows={leases}
+        columns={columns}
+        getRowId={(l) => l.id}
+        searchText={(l) =>
+          `${l.unit_number ?? ""} ${l.property_name ?? ""} ${l.tenants
+            .map((t) => `${t.first_name} ${t.last_name}`)
+            .join(" ")}`
+        }
+        searchPlaceholder="Search leases…"
+        facet={{
+          label: "Status",
+          options: LEASE_STATUS_VALUES.map((s) => ({
+            value: s,
+            label: LEASE_STATUS_META[s].label,
+          })),
+          matches: (l, v) => l.status === v,
+        }}
+        onEdit={canManage ? openEdit : undefined}
+        toolbar={
+          canManage ? (
+            <Button onClick={openNew}>
+              <Plus className="size-4" />
+              New lease
+            </Button>
+          ) : undefined
+        }
+        emptyState={
+          <EmptyState
+            icon={FileText}
+            title="No leases yet"
+            description="Leases will appear here once they're created."
+            action={
+              canManage ? (
+                <Button onClick={openNew}>
+                  <Plus className="size-4" />
+                  New lease
+                </Button>
+              ) : undefined
+            }
+          />
+        }
+      />
+      {canManage ? (
+        <LeaseFormSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          lease={editing}
+          propertyOptions={propertyOptions}
+          unitOptions={unitOptions}
+          tenantOptions={tenantOptions}
         />
-      }
-    />
+      ) : null}
+    </>
   );
 }
