@@ -926,6 +926,44 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["rent_charges"]["Insert"]>;
         Relationships: [];
       };
+      payments: {
+        Row: {
+          id: string;
+          organization_id: string;
+          charge_id: string;
+          tenant_id: string;
+          amount_paid: number;
+          paid_at: string;
+          method: Database["public"]["Enums"]["payment_method"];
+          reference: string | null;
+          notes: string | null;
+          recorded_by: string;
+          refunded_at: string | null;
+          refunded_by: string | null;
+          refund_reason: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          charge_id: string;
+          tenant_id: string;
+          amount_paid: number;
+          paid_at: string;
+          method?: Database["public"]["Enums"]["payment_method"];
+          reference?: string | null;
+          notes?: string | null;
+          recorded_by: string;
+          refunded_at?: string | null;
+          refunded_by?: string | null;
+          refund_reason?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["payments"]["Insert"]>;
+        Relationships: [];
+      };
       messages: {
         Row: {
           id: string;
@@ -1114,6 +1152,15 @@ export type Database = {
         | "withdrawn";
       rent_charge_type: "rent" | "deposit" | "fee" | "credit" | "other";
       rent_charge_status: "open" | "paid" | "partial" | "voided";
+      payment_method:
+        | "cash"
+        | "check"
+        | "ach"
+        | "wire"
+        | "money_order"
+        | "zelle"
+        | "card_offline"
+        | "other";
     };
     CompositeTypes: { [_ in never]: never };
   };

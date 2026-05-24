@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { RentChargesView } from "@/components/payments/rent-charges-view";
+import { PaymentsTabs } from "@/components/payments/payments-tabs";
 import { PageHeader } from "@/components/shared/page-header";
 import { canWriteTenants } from "@/lib/auth/roles";
 import { getSessionContext } from "@/lib/auth/session";
+import { listPayments } from "@/lib/data/payments";
 import {
   listRentChargeFormOptions,
   listRentCharges,
@@ -12,14 +13,19 @@ import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Payments" };
 
-export default async function PaymentsPage() {
+export default async function PaymentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const context = await getSessionContext();
   if (!context) return null;
 
   const supabase = await createClient();
   const perfT = perfStart();
-  const [charges, formOptions, propertiesRes] = await Promise.all([
+  const [charges, payments, formOptions, propertiesRes] = await Promise.all([
     listRentCharges(context.organization.id),
+    listPayments(context.organization.id),
     listRentChargeFormOptions(context.organization.id),
     supabase
       .from("properties")
@@ -29,19 +35,24 @@ export default async function PaymentsPage() {
   ]);
   perfEnd("payments.page.data", perfT, "/payments");
 
+  const params = await searchParams;
+  const initialTab = params.tab === "payments" ? "payments" : "charges";
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Payments"
         description="Rent charges and the ledger for each lease."
       />
-      <RentChargesView
+      <PaymentsTabs
         charges={charges}
+        payments={payments}
         leases={formOptions.leases}
         tenants={formOptions.tenants}
         units={formOptions.units}
         properties={propertiesRes.data ?? []}
         canManage={canWriteTenants(context.roles)}
+        initialTab={initialTab}
       />
     </div>
   );

@@ -14,6 +14,7 @@ import type {
   MaintenancePriority,
   MaintenanceStatus,
   OrganizationStatus,
+  PaymentMethod,
   PropertyType,
   RentChargeStatus,
   RentChargeType,
@@ -241,6 +242,21 @@ export const RENT_CHARGE_TYPE_META: Record<
   deposit: { label: "Deposit", tone: "neutral" },
   fee: { label: "Fee", tone: "warning" },
   credit: { label: "Credit", tone: "success" },
+  other: { label: "Other", tone: "neutral" },
+};
+
+/** Phase 5 (slice 10b): payment method labels. 'credit' deliberately absent — overlaps with rent_charge_type='credit'. */
+export const PAYMENT_METHOD_META: Record<
+  PaymentMethod,
+  { label: string; tone: Tone }
+> = {
+  cash: { label: "Cash", tone: "success" },
+  check: { label: "Check", tone: "success" },
+  ach: { label: "ACH", tone: "success" },
+  wire: { label: "Wire", tone: "success" },
+  money_order: { label: "Money order", tone: "success" },
+  zelle: { label: "Zelle", tone: "success" },
+  card_offline: { label: "Card (offline)", tone: "info" },
   other: { label: "Other", tone: "neutral" },
 };
 

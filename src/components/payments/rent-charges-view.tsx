@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Ban, CalendarPlus, FileBarChart, Plus } from "lucide-react";
+import { Ban, CalendarPlus, FileBarChart, Plus, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { voidRentCharge } from "@/app/(app)/payments/actions";
 import { GenerateChargesDialog } from "@/components/payments/generate-charges-dialog";
+import { PaymentFormSheet } from "@/components/payments/payment-form-sheet";
 import { RentChargeFormSheet } from "@/components/payments/rent-charge-form-sheet";
 import {
   DataTable,
@@ -87,6 +88,11 @@ export function RentChargesView({
   const [voidReason, setVoidReason] = useState("");
   const [voidReasonError, setVoidReasonError] = useState<string | null>(null);
   const [voidPending, startVoidTransition] = useTransition();
+  const [paymentChargeId, setPaymentChargeId] = useState<string | null>(null);
+
+  function openRecordPayment(charge: RentChargeRow) {
+    setPaymentChargeId(charge.id);
+  }
 
   function openVoid(charge: RentChargeRow) {
     setVoidReason("");
@@ -242,16 +248,33 @@ export function RentChargesView({
         onEdit={canManage ? openEdit : undefined}
         rowActions={
           canManage
-            ? (charge) =>
-                charge.status !== "voided" ? (
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => openVoid(charge)}
-                  >
-                    <Ban className="size-4" />
-                    Void
-                  </DropdownMenuItem>
-                ) : null
+            ? (charge) => {
+                const canPay =
+                  charge.status !== "voided" && charge.status !== "paid";
+                const canVoid = charge.status !== "voided";
+                if (!canPay && !canVoid) return null;
+                return (
+                  <>
+                    {canPay ? (
+                      <DropdownMenuItem
+                        onClick={() => openRecordPayment(charge)}
+                      >
+                        <Receipt className="size-4" />
+                        Record payment
+                      </DropdownMenuItem>
+                    ) : null}
+                    {canVoid ? (
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => openVoid(charge)}
+                      >
+                        <Ban className="size-4" />
+                        Void
+                      </DropdownMenuItem>
+                    ) : null}
+                  </>
+                );
+              }
             : undefined
         }
         toolbar={
@@ -305,6 +328,18 @@ export function RentChargesView({
             onOpenChange={setGenerateOpen}
             properties={properties}
             onSuccess={onGenerated}
+          />
+          <PaymentFormSheet
+            open={paymentChargeId !== null}
+            onOpenChange={(o) => {
+              if (!o) setPaymentChargeId(null);
+            }}
+            payment={null}
+            prescopedChargeId={paymentChargeId ?? undefined}
+            payableCharges={charges.filter(
+              (c) => c.status === "open" || c.status === "partial",
+            )}
+            allCharges={charges}
           />
           <AlertDialog
             open={voidTarget !== null}
