@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -47,17 +48,19 @@ export function UserMenu({
         <ChevronsUpDown className="size-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>
-          <div className="flex flex-col gap-0.5">
-            <span className="truncate text-sm font-medium">{name}</span>
-            <span className="truncate text-xs font-normal text-muted-foreground">
-              {email}
-            </span>
-            <span className="mt-1 truncate text-xs font-normal text-muted-foreground">
-              {orgName} · {roleLabel}
-            </span>
-          </div>
-        </DropdownMenuLabel>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            <div className="flex flex-col gap-0.5">
+              <span className="truncate text-sm font-medium">{name}</span>
+              <span className="truncate text-xs font-normal text-muted-foreground">
+                {email}
+              </span>
+              <span className="mt-1 truncate text-xs font-normal text-muted-foreground">
+                {orgName} · {roleLabel}
+              </span>
+            </div>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/settings" />}>
           <Settings className="size-4" />

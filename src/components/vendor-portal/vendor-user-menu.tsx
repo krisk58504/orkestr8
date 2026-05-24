@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -49,17 +50,19 @@ export function VendorUserMenu({
         </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>
-          <div className="flex flex-col gap-0.5">
-            <span className="truncate text-sm font-medium">{name}</span>
-            <span className="truncate text-xs font-normal text-muted-foreground">
-              {email}
-            </span>
-            <span className="mt-1 truncate text-xs font-normal text-muted-foreground">
-              {vendorName} · {roleLabel}
-            </span>
-          </div>
-        </DropdownMenuLabel>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            <div className="flex flex-col gap-0.5">
+              <span className="truncate text-sm font-medium">{name}</span>
+              <span className="truncate text-xs font-normal text-muted-foreground">
+                {email}
+              </span>
+              <span className="mt-1 truncate text-xs font-normal text-muted-foreground">
+                {vendorName} · {roleLabel}
+              </span>
+            </div>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <form action={signOut}>
           <DropdownMenuItem
