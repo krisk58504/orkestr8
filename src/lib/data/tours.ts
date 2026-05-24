@@ -1,25 +1,12 @@
 import "server-only";
+import { TENANT_WRITE_ROLES } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/server";
-import type { Tour, UserRole } from "@/lib/types/app";
+import type { Tour } from "@/lib/types/app";
 
 export type TourRow = Tour & {
   unit_number: string | null;
   agent_name: string | null;
 };
-
-/**
- * Same can_write_tenants cohort as leads (slice 9a). Duplicated rather than
- * extracted to a shared helper — the audit recommendation was "duplicate
- * now, extract when a third caller appears." Slice 9c applications may be
- * that third caller; revisit then.
- */
-const ASSIGNEE_ROLES: UserRole[] = [
-  "SUPER_ADMIN",
-  "OWNER",
-  "REGIONAL_MANAGER",
-  "PROPERTY_MANAGER",
-  "LEASING_AGENT",
-];
 
 export async function listToursForLead(
   orgId: string,
@@ -124,7 +111,7 @@ export async function listTourFormOptions(orgId: string): Promise<{
       .from("user_roles")
       .select("user_id")
       .eq("organization_id", orgId)
-      .in("role", ASSIGNEE_ROLES),
+      .in("role", TENANT_WRITE_ROLES),
   ]);
 
   const eligibleIds = [

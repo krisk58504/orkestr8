@@ -5,6 +5,7 @@
  */
 import type {
   AiMode,
+  ApplicationStatus,
   BuildingStatus,
   LeadSource,
   LeadStatus,
@@ -203,6 +204,19 @@ export const TOUR_STATUS_META: Record<TourStatus, { label: string; tone: Tone }>
   completed: { label: "Completed", tone: "success" },
   no_show: { label: "No-show", tone: "warning" },
   cancelled: { label: "Cancelled", tone: "neutral" },
+};
+
+/** Phase 4 (slice 9c): application lifecycle for the Leasing pipeline. */
+export const APPLICATION_STATUS_META: Record<
+  ApplicationStatus,
+  { label: string; tone: Tone }
+> = {
+  draft: { label: "Draft", tone: "neutral" },
+  submitted: { label: "Submitted", tone: "info" },
+  under_review: { label: "Under Review", tone: "info" },
+  approved: { label: "Approved", tone: "success" },
+  rejected: { label: "Rejected", tone: "warning" },
+  withdrawn: { label: "Withdrawn", tone: "neutral" },
 };
 
 export const BUILDING_STATUS_META: Record<

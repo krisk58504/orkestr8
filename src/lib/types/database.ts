@@ -832,6 +832,54 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["tours"]["Insert"]>;
         Relationships: [];
       };
+      applications: {
+        Row: {
+          id: string;
+          organization_id: string;
+          lead_id: string | null;
+          unit_id: string;
+          status: Database["public"]["Enums"]["application_status"];
+          applicant_first_name: string;
+          applicant_last_name: string;
+          applicant_email: string;
+          applicant_phone: string | null;
+          desired_move_in: string | null;
+          monthly_income: number | null;
+          employment_status: string | null;
+          prior_address: string | null;
+          background_check_consent: boolean;
+          submitted_at: string | null;
+          decided_at: string | null;
+          decided_by: string | null;
+          decision_notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          lead_id?: string | null;
+          unit_id: string;
+          status?: Database["public"]["Enums"]["application_status"];
+          applicant_first_name: string;
+          applicant_last_name: string;
+          applicant_email: string;
+          applicant_phone?: string | null;
+          desired_move_in?: string | null;
+          monthly_income?: number | null;
+          employment_status?: string | null;
+          prior_address?: string | null;
+          background_check_consent?: boolean;
+          submitted_at?: string | null;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          decision_notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["applications"]["Insert"]>;
+        Relationships: [];
+      };
       messages: {
         Row: {
           id: string;
@@ -1011,6 +1059,13 @@ export type Database = {
         | "lost";
       lead_source: "website" | "referral" | "walkin" | "partner" | "other";
       tour_status: "scheduled" | "completed" | "no_show" | "cancelled";
+      application_status:
+        | "draft"
+        | "submitted"
+        | "under_review"
+        | "approved"
+        | "rejected"
+        | "withdrawn";
     };
     CompositeTypes: { [_ in never]: never };
   };

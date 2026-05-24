@@ -1,24 +1,12 @@
 import "server-only";
+import { TENANT_WRITE_ROLES } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/server";
-import type { Lead, UserRole } from "@/lib/types/app";
+import type { Lead } from "@/lib/types/app";
 
 export type LeadRow = Lead & {
   property_name: string | null;
   assignee_name: string | null;
 };
-
-/**
- * Assignee dropdown — restricted to the `can_write_tenants()` role cohort
- * (management + leasing). A maintenance tech is is_org_staff but not a
- * sensible lead owner; filtering here keeps the dropdown useful.
- */
-const ASSIGNEE_ROLES: UserRole[] = [
-  "SUPER_ADMIN",
-  "OWNER",
-  "REGIONAL_MANAGER",
-  "PROPERTY_MANAGER",
-  "LEASING_AGENT",
-];
 
 export async function listLeads(orgId: string): Promise<LeadRow[]> {
   const supabase = await createClient();
@@ -123,7 +111,7 @@ export async function listLeadFormOptions(orgId: string): Promise<{
       .from("user_roles")
       .select("user_id")
       .eq("organization_id", orgId)
-      .in("role", ASSIGNEE_ROLES),
+      .in("role", TENANT_WRITE_ROLES),
   ]);
 
   const eligibleIds = [
