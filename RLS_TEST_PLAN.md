@@ -10,11 +10,19 @@
 > leases tenant-self (Suite 7) 7/7 (2026-05-23), maintenance tenant-self
 > (Suite 11) 10/10 (2026-05-23), tenant_invites lifecycle (Suite 9)
 > 9/9 (2026-05-23), units/properties tenant-self + lease-mediated
-> (Suite 10) 11/11 (2026-05-23). All 150 executed assertions pass;
+> (Suite 10) 11/11 (2026-05-23). Phase 4 complete: leasing CRM
+> (Suite 13) 31/31 (2026-05-24). All 181 executed assertions pass;
 > 0 errored.**
 >
 > **Phase 3 RLS coverage gap CLOSED.** All six Phase 3 suites (7-12) are
-> now authored and passing. Human RLS sign-off remains outstanding — see
+> now authored and passing.
+>
+> **Phase 4 RLS coverage CLOSED.** All three Phase 4 entity tables
+> (leads / tours / applications) plus the slice-9d cross-cutting changes
+> (tenants.source_application_id additive column +
+> create_lease_with_tenants RPC authority widening) are now verified by
+> automated test. Gate 1 §12 sign-off can reference this suite as Phase
+> 4's policy-test surface. Human RLS sign-off remains outstanding — see
 > SECURITY_REVIEW.md.
 >
 > Run against the dev database over the Session pooler connection. Human RLS
@@ -302,6 +310,70 @@ no DELETE policy ⇒ RLS denies all rows for those operations).
 | M13 | staff PM | `update` messages | ✅ **0 rows** (no policy); body unchanged |
 | M14 | staff PM | `delete` messages | ✅ **0 rows** (no policy); row remains |
 
+## 4l. Phase 4 Suite 13 — leasing CRM (leads / tours / applications + RPC widening)
+
+Implemented in `supabase/tests/rls_phase4_leasing.sql`. Single suite
+covers all three Phase 4 entity tables plus the slice-9d cross-cutting
+changes — matches the §6 "one suite for Phase 4" plan (mirrors Phase 3
+Suite 9 single-file shape).
+
+Covered migrations:
+- `20260528000100_phase4_leads.sql` — leads + 4 policies
+- `20260528000200_phase4_leads_cross_org_pin.sql` — leads §8.1 FK pin
+  closure (slice 9a follow-up `dccbf45`)
+- `20260529000100_phase4_tours.sql` — tours + 4 policies with cross-org
+  FK pins built in (lead_id / unit_id / agent_id)
+- `20260530000100_phase4_applications.sql` — applications + 4 policies
+  with cross-org FK pins built in (unit_id / lead_id / decided_by)
+- `20260531000100_phase4_lease_conversion.sql` —
+  `tenants.source_application_id` additive column +
+  `create_lease_with_tenants` RPC authority widened from
+  `is_org_manager()` to `can_write_tenants()` per §0.5 decision 3
+
+Narrow-read posture (per §0.5 decision 7): all three tables gate SELECT
+on `can_write_tenants()`, so `MAINTENANCE_TECH` (is_org_staff but NOT
+can_write_tenants) sees 0 rows on each. K3 / T3 / A3 are the load-bearing
+narrow-read assertions distinguishing Phase 4 from Phase 3 messages.
+
+A10 verifies RLS does NOT enforce the application_status transition map
+(per §7 risk 4 + §3c.§8.2) — enforcement lives in the
+`updateApplication` server action only. A pass here certifies the
+absence of an RLS rule, not the presence of an app-layer rule.
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| K1 | Org A PROPERTY_MANAGER | `select` `leads` | ✅ 1 row (seed Lead-A) |
+| K2 | Org A LEASING_AGENT | `select` `leads` | ✅ 1 row (can_write_tenants parity) |
+| K3 | Org A MAINTENANCE_TECH | `select` `leads` | ✅ **0 rows** (narrow read per §0.5 decision 7) |
+| K4 | Org B PROPERTY_MANAGER | `select` Org A leads | ✅ **0 rows** (cross-org pin) |
+| K5 | Org A PROPERTY_MANAGER | `insert` lead with same-org `desired_property_id` + `assigned_to` | ✅ allowed |
+| K6 | Org A MAINTENANCE_TECH | `insert` lead | ✅ **rejected** (can_write_tenants gate) |
+| K7 | Org A PROPERTY_MANAGER | `insert` lead with cross-org `desired_property_id` | ✅ **rejected** (§8.1 FK pin) |
+| K8 | Org A PROPERTY_MANAGER | `insert` lead with cross-org `assigned_to` | ✅ **rejected** (§8.1 FK pin) |
+| T1 | Org A PROPERTY_MANAGER | `select` `tours` | ✅ 1 row |
+| T2 | Org A LEASING_AGENT | `select` `tours` | ✅ 1 row |
+| T3 | Org A MAINTENANCE_TECH | `select` `tours` | ✅ **0 rows** (narrow read) |
+| T4 | Org B PROPERTY_MANAGER | `select` Org A tours | ✅ **0 rows** |
+| T5 | Org A PROPERTY_MANAGER | `insert` tour with same-org lead/unit/agent | ✅ allowed |
+| T6 | Org A MAINTENANCE_TECH | `insert` tour | ✅ **rejected** |
+| T7 | Org A PROPERTY_MANAGER | `insert` tour with cross-org `lead_id` | ✅ **rejected** (FK pin) |
+| T8 | Org A PROPERTY_MANAGER | `insert` tour with cross-org `unit_id` | ✅ **rejected** (FK pin) |
+| T9 | Org A PROPERTY_MANAGER | `insert` tour with cross-org `agent_id` | ✅ **rejected** (FK pin) |
+| A1 | Org A PROPERTY_MANAGER | `select` `applications` | ✅ 1 row |
+| A2 | Org A LEASING_AGENT | `select` `applications` | ✅ 1 row |
+| A3 | Org A MAINTENANCE_TECH | `select` `applications` | ✅ **0 rows** (narrow read) |
+| A4 | Org B PROPERTY_MANAGER | `select` Org A applications | ✅ **0 rows** |
+| A5 | Org A PROPERTY_MANAGER | `insert` application with same-org `unit_id` | ✅ allowed |
+| A6 | Org A MAINTENANCE_TECH | `insert` application | ✅ **rejected** |
+| A7 | Org A PROPERTY_MANAGER | `insert` application with cross-org `unit_id` | ✅ **rejected** (FK pin) |
+| A8 | Org A PROPERTY_MANAGER | `insert` application with cross-org `lead_id` | ✅ **rejected** (FK pin) |
+| A9 | Org A PROPERTY_MANAGER | `insert` application with cross-org `decided_by` | ✅ **rejected** (FK pin) |
+| A10 | Org A PROPERTY_MANAGER | `update applications set status='approved'` from `draft` directly | ✅ **succeeds** (RLS does **not** enforce the transition map; enforcement is app-layer only — §7 risk 4 + §3c.§8.2) |
+| X1 | Org A LEASING_AGENT | `create_lease_with_tenants(Org A, …, p_tenant_ids := [Ten-A])` | ✅ succeeds; lease lands in Org A (widened authority per §0.5 decision 3) |
+| X2 | Org A PROPERTY_MANAGER | `create_lease_with_tenants(Org A, …)` | ✅ succeeds; lease lands in Org A (manager regression — widening didn't lock out PM) |
+| X3 | Org A MAINTENANCE_TECH | `create_lease_with_tenants(Org A, …)` | ✅ **rejected** SQLSTATE 42501 (widening was to can_write_tenants, not is_org_staff) |
+| X4 | Org A PROPERTY_MANAGER | `insert tenants(..., source_application_id := App-A)` | ✅ allowed; column populated (additive column landed correctly) |
+
 ## 5. How to run
 
 ```bash
@@ -318,6 +390,7 @@ npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_accept_tenant_invite.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_units_properties_tenant_self.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_maintenance_tenant_self.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_messages_immutable.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase4_leasing.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -345,3 +418,4 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 10 / 10, 0 errored | `rls_phase3_maintenance_tenant_self.sql` — Suite 11 — Q1-Q10 (maintenance tenant-self SELECT + INSERT defense-in-depth) |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 9 / 9, 0 errored | `rls_phase3_tenant_invites_lifecycle.sql` — Suite 9 — I1-I9 (tenant_invites can_write_tenants gating + mutual-exclusion CHECK + revoke lifecycle) |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 11 / 11, 0 errored | `rls_phase3_units_properties_tenant_self.sql` — Suite 10 — U1-U6 + P1-P5 (units/properties tenant-self direct + lease-mediated, ended-lease regression) |
+| 2026-05-24 | `scripts/run-sql.ts` (pg) | 31 / 31, 0 errored | `rls_phase4_leasing.sql` — Suite 13 — K1-K8 (leads cohort + §8.1 FK pins), T1-T9 (tours cohort + 3 FK pins), A1-A10 (applications cohort + 3 FK pins + A10 RLS-does-not-enforce-status-transitions), X1-X4 (create_lease_with_tenants widened authority + source_application_id additive column) — closes Phase 4 RLS coverage gap |
