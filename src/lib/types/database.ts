@@ -804,6 +804,34 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["leads"]["Insert"]>;
         Relationships: [];
       };
+      tours: {
+        Row: {
+          id: string;
+          organization_id: string;
+          lead_id: string;
+          unit_id: string | null;
+          agent_id: string | null;
+          scheduled_at: string;
+          status: Database["public"]["Enums"]["tour_status"];
+          outcome_notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          lead_id: string;
+          unit_id?: string | null;
+          agent_id?: string | null;
+          scheduled_at: string;
+          status?: Database["public"]["Enums"]["tour_status"];
+          outcome_notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["tours"]["Insert"]>;
+        Relationships: [];
+      };
       messages: {
         Row: {
           id: string;
@@ -982,6 +1010,7 @@ export type Database = {
         | "disqualified"
         | "lost";
       lead_source: "website" | "referral" | "walkin" | "partner" | "other";
+      tour_status: "scheduled" | "completed" | "no_show" | "cancelled";
     };
     CompositeTypes: { [_ in never]: never };
   };

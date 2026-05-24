@@ -17,6 +17,7 @@ import type {
   TenantInviteStatus,
   TenantMaintenanceStatus,
   TenantStatus,
+  TourStatus,
   UnitStatus,
   UserRole,
   VendorDocumentType,
@@ -194,6 +195,14 @@ export const LEAD_SOURCE_META: Record<LeadSource, { label: string; tone: Tone }>
   walkin: { label: "Walk-in", tone: "neutral" },
   partner: { label: "Partner", tone: "neutral" },
   other: { label: "Other", tone: "neutral" },
+};
+
+/** Phase 4 (slice 9b): tour lifecycle for the Leasing pipeline. */
+export const TOUR_STATUS_META: Record<TourStatus, { label: string; tone: Tone }> = {
+  scheduled: { label: "Scheduled", tone: "info" },
+  completed: { label: "Completed", tone: "success" },
+  no_show: { label: "No-show", tone: "warning" },
+  cancelled: { label: "Cancelled", tone: "neutral" },
 };
 
 export const BUILDING_STATUS_META: Record<

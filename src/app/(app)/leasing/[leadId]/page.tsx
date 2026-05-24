@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { LeadDetailEditAffordance } from "@/components/leasing/lead-detail-edit-affordance";
+import { LeadToursSection } from "@/components/leasing/lead-tours-section";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { canWriteTenants } from "@/lib/auth/roles";
 import { getSessionContext } from "@/lib/auth/session";
 import { LEAD_SOURCE_META, LEAD_STATUS_META } from "@/lib/constants";
 import { getLead, listLeadFormOptions } from "@/lib/data/leads";
+import { listToursForLead, listTourFormOptions } from "@/lib/data/tours";
 
 export const metadata: Metadata = { title: "Lead" };
 
@@ -38,11 +40,31 @@ export default async function LeadDetailPage({
   const statusMeta = LEAD_STATUS_META[lead.status];
   const sourceMeta = LEAD_SOURCE_META[lead.source];
 
-  // Form options are only needed when the manager can edit. Conditional
-  // fetch keeps the read-only path cheaper.
-  const formOptions = canManage
-    ? await listLeadFormOptions(context.organization.id)
-    : { properties: [], assignees: [] };
+  // Tours always render (read-only readers see them too); form options for
+  // both leads and tours are conditional on canManage.
+  const [tours, formOptions, tourFormOptions] = await Promise.all([
+    listToursForLead(context.organization.id, leadId),
+    canManage
+      ? listLeadFormOptions(context.organization.id)
+      : Promise.resolve({
+          properties: [] as { id: string; name: string }[],
+          assignees: [] as {
+            id: string;
+            full_name: string | null;
+            email: string;
+          }[],
+        }),
+    canManage
+      ? listTourFormOptions(context.organization.id)
+      : Promise.resolve({
+          units: [] as { id: string; unit_number: string }[],
+          agents: [] as {
+            id: string;
+            full_name: string | null;
+            email: string;
+          }[],
+        }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -118,6 +140,14 @@ export default async function LeadDetailPage({
           ) : null}
         </CardContent>
       </Card>
+
+      <LeadToursSection
+        tours={tours}
+        unitOptions={tourFormOptions.units}
+        agentOptions={tourFormOptions.agents}
+        canManage={canManage}
+        leadId={leadId}
+      />
     </div>
   );
 }

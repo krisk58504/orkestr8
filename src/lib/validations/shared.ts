@@ -101,6 +101,21 @@ export const requiredDate = z
   .min(1, "Date is required.")
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date.");
 
+/**
+ * Required datetime string — rejects empty input. Symmetric to requiredDate /
+ * optionalDateTime. Accepts any string that Date.parse() resolves; intended
+ * for <input type="datetime-local"> values ("YYYY-MM-DDTHH:mm"), which
+ * Postgres timestamptz parses correctly.
+ */
+export const requiredDateTime = z
+  .string()
+  .trim()
+  .min(1, "Date and time are required.")
+  .refine(
+    (v) => !Number.isNaN(new Date(v).getTime()),
+    "Enter a valid date and time.",
+  );
+
 /** Required non-negative decimal number. */
 export function requiredDecimal(max = 100_000_000) {
   return z
