@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Ban, CalendarPlus, FileBarChart, Plus, Receipt } from "lucide-react";
 import { toast } from "sonner";
@@ -159,12 +158,7 @@ export function RentChargesView({
       sortAccessor: (c) => c.tenant_name ?? "",
       cell: (c) =>
         c.tenant_name ? (
-          <Link
-            href={`/tenants/${c.tenant_id}`}
-            className="font-medium hover:underline"
-          >
-            {c.tenant_name}
-          </Link>
+          <span className="font-medium">{c.tenant_name}</span>
         ) : (
           "—"
         ),

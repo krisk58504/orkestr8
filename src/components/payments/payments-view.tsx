@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Receipt } from "lucide-react";
 import { toast } from "sonner";
@@ -86,12 +85,7 @@ export function PaymentsView({
       sortAccessor: (p) => p.tenant_name ?? "",
       cell: (p) =>
         p.tenant_name ? (
-          <Link
-            href={`/tenants/${p.tenant_id}`}
-            className="font-medium hover:underline"
-          >
-            {p.tenant_name}
-          </Link>
+          <span className="font-medium">{p.tenant_name}</span>
         ) : (
           "—"
         ),
