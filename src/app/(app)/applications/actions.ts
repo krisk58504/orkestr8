@@ -16,6 +16,10 @@ export type ActionResult =
   | { ok: true }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
 
+export type ConvertResult =
+  | { ok: true; tenantId: string; leaseId: string }
+  | { ok: false; error: string; fieldErrors?: Record<string, string> };
+
 const NO_PERMISSION = "You don't have permission to manage applications.";
 
 /** Status states an application can be approved or rejected from. */
@@ -280,6 +284,206 @@ export async function approveApplication(
   revalidatePath(`/applications/${id}`);
   revalidatePath("/dashboard");
   return { ok: true };
+}
+
+/**
+ * Convert an approved application into a tenant + lease. The integration
+ * slice — bridges Phase 4 leasing CRM with Phase 3 tenants + leases. Calls
+ * the can_write_tenants()-widened create_lease_with_tenants RPC (per
+ * PHASE_4_PLAN.md §0.5 decision 3). Not atomic across the tenant INSERT
+ * and the RPC call — if the RPC fails after the tenant is inserted, an
+ * orphan tenant row exists (recovery: manual delete + retry). See the
+ * known limitation block in migration 20260531000100.
+ */
+export async function convertApplicationToLease(
+  applicationId: string,
+  input: { start_date: string; monthly_rent: number | string },
+): Promise<ConvertResult> {
+  const guard = await requireSession();
+  if (!guard.ok) return { ok: false, error: guard.error };
+  if (!canWriteTenants(guard.context.roles)) {
+    return { ok: false, error: NO_PERMISSION };
+  }
+
+  const supabase = await createClient();
+  const orgId = guard.context.organization.id;
+
+  // ---- Pre-flight: application must exist, be approved, not yet converted ----
+  const { data: app } = await supabase
+    .from("applications")
+    .select(
+      "id, status, lead_id, unit_id, applicant_first_name, applicant_last_name, applicant_email, applicant_phone",
+    )
+    .eq("id", applicationId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (!app) return { ok: false, error: "Application not found." };
+  if (app.status !== "approved") {
+    return {
+      ok: false,
+      error: "Application must be approved before conversion.",
+    };
+  }
+
+  const { data: existingConvert } = await supabase
+    .from("tenants")
+    .select("id")
+    .eq("source_application_id", applicationId)
+    .eq("organization_id", orgId)
+    .limit(1)
+    .maybeSingle();
+  if (existingConvert) {
+    return {
+      ok: false,
+      error: "This application has already been converted.",
+    };
+  }
+
+  // ---- Input validation: start_date + monthly_rent --------------------------
+  const fieldErrors: Record<string, string> = {};
+  const startDate = input.start_date?.trim() ?? "";
+  if (!startDate || Number.isNaN(new Date(startDate).getTime())) {
+    fieldErrors.start_date = "Enter a valid start date.";
+  }
+  const rentRaw =
+    typeof input.monthly_rent === "string"
+      ? input.monthly_rent.trim()
+      : input.monthly_rent;
+  const rentNum =
+    typeof rentRaw === "string"
+      ? rentRaw.length > 0
+        ? Number(rentRaw)
+        : NaN
+      : rentRaw;
+  if (!Number.isFinite(rentNum) || rentNum < 0) {
+    fieldErrors.monthly_rent = "Enter a non-negative monthly rent.";
+  }
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      error: "Please fix the highlighted fields.",
+      fieldErrors,
+    };
+  }
+
+  // ---- Resolve unit (must still exist in org) + its property_id ------------
+  const { data: unit } = await supabase
+    .from("units")
+    .select("id, property_id")
+    .eq("id", app.unit_id)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (!unit) {
+    return {
+      ok: false,
+      error: "The unit on this application no longer exists.",
+    };
+  }
+
+  // ---- Step A: INSERT tenant from applicant identity -----------------------
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .insert({
+      organization_id: orgId,
+      first_name: app.applicant_first_name,
+      last_name: app.applicant_last_name,
+      email: app.applicant_email,
+      phone: app.applicant_phone,
+      status: "applicant",
+      unit_id: unit.id,
+      property_id: unit.property_id,
+      move_in_date: startDate,
+      source_application_id: applicationId,
+    })
+    .select("id")
+    .single();
+  if (tenantError || !tenant) {
+    return {
+      ok: false,
+      error: tenantError?.message ?? "Failed to create tenant.",
+    };
+  }
+
+  // ---- Step B: RPC — atomic lease + tenant assignment ----------------------
+  // Per the known limitation in 20260531000100: if this fails, the tenant
+  // row from Step A is now an orphan. LA recovers manually.
+  const { data: leaseId, error: rpcError } = await supabase.rpc(
+    "create_lease_with_tenants",
+    {
+      p_organization_id: orgId,
+      p_unit_id: unit.id,
+      p_start_date: startDate,
+      p_end_date: null,
+      p_monthly_rent: rentNum,
+      p_status: "upcoming",
+      p_notes: null,
+      p_tenant_ids: [tenant.id],
+    },
+  );
+  if (rpcError || !leaseId) {
+    return {
+      ok: false,
+      error: `Tenant created but lease failed: ${rpcError?.message ?? "unknown error"}. Delete the orphan tenant and retry.`,
+    };
+  }
+
+  // ---- Step C: soft-write lead.status='converted' (CRM hint, not contract) -
+  if (app.lead_id) {
+    try {
+      await supabase
+        .from("leads")
+        .update({ status: "converted" })
+        .eq("id", app.lead_id)
+        .eq("organization_id", orgId);
+    } catch {
+      // Swallow — lead status is a hint, not a contract.
+    }
+  }
+
+  // ---- Step D: three audit entries ------------------------------------------
+  await logAudit({
+    organizationId: orgId,
+    actorId: guard.context.authUserId,
+    action: "tenant.created",
+    entityType: "tenant",
+    entityId: tenant.id,
+    metadata: {
+      source: "application_conversion",
+      application_id: applicationId,
+      lead_id: app.lead_id,
+    },
+  });
+  await logAudit({
+    organizationId: orgId,
+    actorId: guard.context.authUserId,
+    action: "lease.created",
+    entityType: "lease",
+    entityId: leaseId,
+    metadata: {
+      source: "application_conversion",
+      application_id: applicationId,
+      tenant_id: tenant.id,
+      unit_id: unit.id,
+      monthly_rent: rentNum,
+      start_date: startDate,
+    },
+  });
+  await logAudit({
+    organizationId: orgId,
+    actorId: guard.context.authUserId,
+    action: "application.converted",
+    entityType: "application",
+    entityId: applicationId,
+    metadata: { tenant_id: tenant.id, lease_id: leaseId },
+  });
+
+  // ---- Step E: revalidate every affected route -----------------------------
+  revalidatePath("/applications");
+  revalidatePath(`/applications/${applicationId}`);
+  revalidatePath("/tenants");
+  revalidatePath("/leases");
+  revalidatePath("/dashboard");
+  return { ok: true, tenantId: tenant.id, leaseId };
 }
 
 /**

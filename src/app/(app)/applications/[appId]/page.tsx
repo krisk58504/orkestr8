@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { ApplicationDetailActions } from "@/components/applications/application-detail-actions";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -87,11 +87,40 @@ export default async function ApplicationDetailPage({
                 application={application}
                 unitOptions={formOptions.units}
                 leadOptions={formOptions.leads}
+                alreadyConverted={application.converted_tenant_id !== null}
               />
             ) : null}
           </div>
         </PageHeader>
       </div>
+
+      {application.converted_tenant_id ? (
+        <Card>
+          <CardHeader className="flex-row items-center gap-2 space-y-0">
+            <CheckCircle2 className="size-5 text-emerald-600" />
+            <CardTitle>Converted to tenant + lease</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3 text-sm">
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link href={`/tenants`} />}
+            >
+              View tenant
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link href="/leases" />}
+            >
+              View lease
+            </Button>
+            <span className="text-muted-foreground">
+              Send a portal invite from the tenant page to close the loop.
+            </span>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

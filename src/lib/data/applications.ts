@@ -6,6 +6,8 @@ export type ApplicationRow = Application & {
   lead_name: string | null;          // null when lead_id is null or lead has been removed
   unit_number: string | null;        // unit_id is NOT NULL but defense-in-depth
   decided_by_name: string | null;    // null until approve/reject fires
+  converted_tenant_id: string | null; // populated when a tenant has source_application_id = this.id
+  converted_lease_id: string | null;  // tenant.lease_id of the converted tenant
 };
 
 export async function listApplications(
@@ -13,25 +15,31 @@ export async function listApplications(
 ): Promise<ApplicationRow[]> {
   const supabase = await createClient();
 
-  const [applications, leads, units, users] = await Promise.all([
-    supabase
-      .from("applications")
-      .select("*")
-      .eq("organization_id", orgId)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("leads")
-      .select("id, first_name, last_name")
-      .eq("organization_id", orgId),
-    supabase
-      .from("units")
-      .select("id, unit_number")
-      .eq("organization_id", orgId),
-    supabase
-      .from("users")
-      .select("id, full_name, email")
-      .eq("organization_id", orgId),
-  ]);
+  const [applications, leads, units, users, convertedTenants] =
+    await Promise.all([
+      supabase
+        .from("applications")
+        .select("*")
+        .eq("organization_id", orgId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("leads")
+        .select("id, first_name, last_name")
+        .eq("organization_id", orgId),
+      supabase
+        .from("units")
+        .select("id, unit_number")
+        .eq("organization_id", orgId),
+      supabase
+        .from("users")
+        .select("id, full_name, email")
+        .eq("organization_id", orgId),
+      supabase
+        .from("tenants")
+        .select("id, lease_id, source_application_id")
+        .eq("organization_id", orgId)
+        .not("source_application_id", "is", null),
+    ]);
 
   const leadNames = new Map<string, string>();
   for (const l of leads.data ?? []) {
@@ -48,14 +56,32 @@ export async function listApplications(
     userDisplay.set(u.id, u.full_name?.trim() || u.email);
   }
 
-  return (applications.data ?? []).map((app) => ({
-    ...app,
-    lead_name: app.lead_id ? (leadNames.get(app.lead_id) ?? null) : null,
-    unit_number: app.unit_id ? (unitNumbers.get(app.unit_id) ?? null) : null,
-    decided_by_name: app.decided_by
-      ? (userDisplay.get(app.decided_by) ?? null)
-      : null,
-  }));
+  const conversionByApp = new Map<
+    string,
+    { tenantId: string; leaseId: string | null }
+  >();
+  for (const t of convertedTenants.data ?? []) {
+    if (t.source_application_id) {
+      conversionByApp.set(t.source_application_id, {
+        tenantId: t.id,
+        leaseId: t.lease_id,
+      });
+    }
+  }
+
+  return (applications.data ?? []).map((app) => {
+    const conv = conversionByApp.get(app.id) ?? null;
+    return {
+      ...app,
+      lead_name: app.lead_id ? (leadNames.get(app.lead_id) ?? null) : null,
+      unit_number: app.unit_id ? (unitNumbers.get(app.unit_id) ?? null) : null,
+      decided_by_name: app.decided_by
+        ? (userDisplay.get(app.decided_by) ?? null)
+        : null,
+      converted_tenant_id: conv?.tenantId ?? null,
+      converted_lease_id: conv?.leaseId ?? null,
+    };
+  });
 }
 
 export async function getApplication(
@@ -72,7 +98,7 @@ export async function getApplication(
     .maybeSingle();
   if (!app) return null;
 
-  const [leadRes, unitRes, userRes] = await Promise.all([
+  const [leadRes, unitRes, userRes, convertedRes] = await Promise.all([
     app.lead_id
       ? supabase
           .from("leads")
@@ -96,6 +122,13 @@ export async function getApplication(
           .eq("id", app.decided_by)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    supabase
+      .from("tenants")
+      .select("id, lease_id")
+      .eq("organization_id", orgId)
+      .eq("source_application_id", app.id)
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const leadName = leadRes.data
@@ -110,6 +143,8 @@ export async function getApplication(
     lead_name: leadName,
     unit_number: unitRes.data?.unit_number ?? null,
     decided_by_name: deciderName,
+    converted_tenant_id: convertedRes.data?.id ?? null,
+    converted_lease_id: convertedRes.data?.lease_id ?? null,
   };
 }
 

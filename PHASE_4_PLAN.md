@@ -510,6 +510,21 @@ file matches the `photo-actions.ts` / `triage-actions.ts` /
   8. If `options.sendInvite` is true, fire `sendInvite` (Phase 3 slice
      6b infrastructure) to the new tenant's email.
 
+> **Note (added 2026-05-23 with slice 9d closure):** the sketch above
+> shows a combined `approveApplicationAndConvert` action. Per §0.5
+> decisions 3 and 5 (locked later than this §5 draft was authored), the
+> action was split into two separate operations: `approveApplication`
+> (slice 9c) captures the decision + `decision_notes` and stamps
+> `decided_at`/`decided_by`; `convertApplicationToLease` (slice 9d)
+> creates the tenant + lease as a separate manager-driven step gated on
+> `application.status === 'approved'`. Auto-invite was also dropped per
+> §0.5 decision 5 — the LA fires `sendInvite` manually from the new
+> tenant's page. The conversion action lives in
+> `src/app/(app)/applications/actions.ts` as a sibling of the other
+> application actions (not a separate `convert-actions.ts` file — the
+> action is small and shares helpers). See slice 9d commit for
+> implementation.
+
 ### Components
 
 - `src/components/leasing/lead-form-sheet.tsx` — mirror of

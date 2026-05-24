@@ -257,6 +257,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           lease_id: string | null;
+          source_application_id: string | null;
         };
         Insert: {
           id?: string;
@@ -278,6 +279,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           lease_id?: string | null;
+          source_application_id?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["tenants"]["Insert"]>;
         Relationships: [];
