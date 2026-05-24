@@ -75,7 +75,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: "Engagement",
     items: [
-      { label: "Communications", href: "/communications", icon: MessageSquare, enabled: false },
+      { label: "Messages", href: "/messages", icon: MessageSquare, enabled: true },
       { label: "Amenities", href: "/amenities", icon: Sparkles, enabled: false },
     ],
   },

@@ -764,6 +764,48 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["leases"]["Insert"]>;
         Relationships: [];
       };
+      messages: {
+        Row: {
+          id: string;
+          organization_id: string;
+          tenant_id: string;
+          sender_id: string | null;
+          sender_role: Database["public"]["Enums"]["message_sender_role"];
+          body: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          tenant_id: string;
+          sender_id?: string | null;
+          sender_role: Database["public"]["Enums"]["message_sender_role"];
+          body: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["messages"]["Insert"]>;
+        Relationships: [];
+      };
+      tenant_conversation_state: {
+        Row: {
+          tenant_id: string;
+          organization_id: string;
+          last_read_by_tenant_at: string | null;
+          last_read_by_staff_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          tenant_id: string;
+          organization_id: string;
+          last_read_by_tenant_at?: string | null;
+          last_read_by_staff_at?: string | null;
+          updated_at?: string;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["tenant_conversation_state"]["Insert"]
+        >;
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -889,6 +931,7 @@ export type Database = {
         | "rejected"
         | "paid";
       lease_status: "upcoming" | "active" | "ended";
+      message_sender_role: "tenant" | "staff";
     };
     CompositeTypes: { [_ in never]: never };
   };

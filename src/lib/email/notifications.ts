@@ -21,6 +21,7 @@ import {
   EMAIL_TEMPLATE,
   maintenanceRequestReceivedEmail,
   tenantInviteEmail,
+  tenantMessageReceivedEmail,
   vendorInvoiceSubmittedEmail,
   workOrderAssignedEmail,
   workOrderStatusChangedEmail,
@@ -112,6 +113,38 @@ export async function notifyMaintenanceRequestReceived(params: {
     }),
     relatedEntityType: "maintenance_request",
     relatedEntityId: params.requestId,
+  });
+}
+
+/**
+ * Notify a tenant that there are new messages in their portal conversation.
+ *
+ * IMPORTANT — dedup keying: relatedEntityId is the TENANT id, not the message
+ * id. That makes the (to, template, related_entity_id) dedup window collapse
+ * any burst of staff messages within 10 minutes into a single email per
+ * tenant per window. The template body is intentionally generic — no excerpt,
+ * no per-message sender attribution — so one email reads correctly whether
+ * one or many messages triggered it.
+ */
+export async function notifyTenantMessageReceived(params: {
+  organizationId: string;
+  tenantId: string;
+  tenantEmail: string;
+  tenantFirstName: string;
+  orgName: string;
+  conversationUrl: string;
+}): Promise<NotifyResult> {
+  return sendEmail({
+    to: params.tenantEmail,
+    organizationId: params.organizationId,
+    template: EMAIL_TEMPLATE.tenantMessage,
+    content: tenantMessageReceivedEmail({
+      tenantFirstName: params.tenantFirstName,
+      orgName: params.orgName,
+      conversationUrl: params.conversationUrl,
+    }),
+    relatedEntityType: "tenant_conversation",
+    relatedEntityId: params.tenantId,
   });
 }
 

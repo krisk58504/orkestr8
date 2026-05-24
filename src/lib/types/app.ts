@@ -35,6 +35,8 @@ export type WorkOrder = Tables<"work_orders">;
 export type WorkOrderPhoto = Tables<"work_order_photos">;
 export type EmailLog = Tables<"email_log">;
 export type Lease = Tables<"leases">;
+export type Message = Tables<"messages">;
+export type TenantConversationState = Tables<"tenant_conversation_state">;
 
 export type UserRole = Enums<"user_role">;
 export type AiMode = Enums<"ai_mode">;
@@ -75,6 +77,7 @@ export type VendorStatus = Enums<"vendor_status">;
 export type VendorDocumentType = Enums<"vendor_document_type">;
 export type VendorInvoiceStatus = Enums<"vendor_invoice_status">;
 export type LeaseStatus = Enums<"lease_status">;
+export type MessageSenderRole = Enums<"message_sender_role">;
 
 /** Resolved identity for the signed-in user, loaded once per request. */
 export type SessionContext = {

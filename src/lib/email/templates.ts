@@ -14,6 +14,7 @@ export const EMAIL_TEMPLATE = {
   maintenanceRequestReceived: "maintenance_request.received",
   vendorInvoiceSubmitted: "vendor_invoice.submitted",
   tenantInvite: "tenant.invite",
+  tenantMessage: "tenant.message",
 } as const;
 
 export type EmailTemplateId =
@@ -245,5 +246,43 @@ Accept your invite: ${data.acceptUrl}
 ${detailsText(rows)}
 
 This invite expires on ${data.expiresAt}. If you weren't expecting this email, you can safely ignore it — no account will be created until you click the link.`;
+  return { subject, html, text };
+}
+
+// --- Tenant message received ----------------------------------------------
+
+/**
+ * Generic notification — intentionally NOT message-specific. Because the
+ * notifier dedups on (to, template, tenant_id) within a 10-minute window,
+ * one email can represent one OR many messages. The body therefore omits
+ * the message excerpt and sender attribution — it just tells the tenant
+ * there's activity in their conversation.
+ */
+export type TenantMessageReceivedData = {
+  tenantFirstName: string;
+  orgName: string;
+  conversationUrl: string;
+};
+
+export function tenantMessageReceivedEmail(
+  data: TenantMessageReceivedData,
+): EmailContent {
+  const subject = `New message from ${data.orgName}`;
+  const cta = `<p style="margin:16px 0;">
+    <a href="${data.conversationUrl}" style="display:inline-block;padding:10px 18px;background:#18181b;color:#ffffff;border-radius:6px;text-decoration:none;font-size:14px;font-weight:bold;">Open your conversation</a>
+  </p>`;
+  const html = layout(
+    "New messages in your portal",
+    paragraph(`Hello ${data.tenantFirstName}, you have new messages from the team at ${data.orgName}.`) +
+      cta +
+      paragraph("Sign in to your tenant portal to read and reply."),
+  );
+  const text = `Hello ${data.tenantFirstName},
+
+You have new messages from the team at ${data.orgName}.
+
+Open your conversation: ${data.conversationUrl}
+
+Sign in to your tenant portal to read and reply.`;
   return { subject, html, text };
 }
