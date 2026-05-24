@@ -1499,4 +1499,4 @@ By signing below, the reviewer attests that:
 
 | Reviewer | Date | Outcome |
 |---|---|---|
-| Kris Kelley | pending | pending |
+| Kris Kelley | 2026-05-24 | Certified — Gate 1 re-certification approved |
