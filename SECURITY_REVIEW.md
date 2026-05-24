@@ -372,8 +372,8 @@ trusted callers as defense in depth. Verified by
   AI-log writer; this §11 confirms the packet's findings remain accurate at
   the snapshot above, then inventories the eight **Phase 3** additions the
   packet predates.
-- Cumulative RLS test coverage: **130 assertions across 10 suites** (84 prior
-  + 15 Suite 8 + 14 Suite 12 + 7 Suite 7 + 10 Suite 11), all passing as of 2026-05-23.
+- Cumulative RLS test coverage: **139 assertions across 11 suites** (84 prior
+  + 15 Suite 8 + 14 Suite 12 + 7 Suite 7 + 10 Suite 11 + 9 Suite 9), all passing as of 2026-05-23.
 
 ### 11.1 Phase 3 RLS additions
 
@@ -780,7 +780,7 @@ Six Phase 3 suites are documented in RLS_TEST_PLAN.md §4f-§4k.
 |---|---|---|
 | 7 — leases tenant-self | `leases_select` tenant branch via `tenants.lease_id`; `leases_write` manager-only gating | **authored 2026-05-23** — `supabase/tests/rls_phase3_leases_tenant_self.sql`, 7/7 passing |
 | 8 — accept_tenant_invite RPC | atomic 4-step transition; 4 classified error codes; SECURITY DEFINER + EXECUTE grant posture; exact `token_hash` matching | **authored 2026-05-23** — `supabase/tests/rls_phase3_accept_tenant_invite.sql`, 15/15 passing |
-| 9 — tenant_invites lifecycle | `can_write_tenants` gate on both branches; mutual-exclusion CHECK | **deferred** — pattern mirrors `tenants_write` (Suite 2 R2/R3) with table name swapped |
+| 9 — tenant_invites lifecycle | `can_write_tenants` gate on both branches; mutual-exclusion CHECK; revoke lifecycle path | **authored 2026-05-23** — `supabase/tests/rls_phase3_tenant_invites_lifecycle.sql`, 9/9 passing |
 | 10 — tenant-self units / properties + lease-mediated | direct (M3T) and lease-mediated (M3LU) tenant-self branches | **deferred** — direct branches mirror `tenants_select`; lease-mediated branches mirror `leases_select` (both already tested for their own table) |
 | 11 — tenant-self maintenance | M3M select + insert; defense-in-depth on insert | **authored 2026-05-23** — `supabase/tests/rls_phase3_maintenance_tenant_self.sql`, 10/10 passing |
 | 12 — messages immutability + sender_role | RLS no-UPDATE / no-DELETE; sender_role gating; sender_id forgery guard; defense-in-depth on tenant insert | **authored 2026-05-23** — `supabase/tests/rls_phase3_messages_immutable.sql`, 14/14 passing |

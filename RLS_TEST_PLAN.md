@@ -8,16 +8,13 @@
 > 8/8 (2026-05-19). Phase 3 partial: accept_tenant_invite RPC (Suite 8)
 > 15/15 (2026-05-23), messages immutability (Suite 12) 14/14 (2026-05-23),
 > leases tenant-self (Suite 7) 7/7 (2026-05-23), maintenance tenant-self
-> (Suite 11) 10/10 (2026-05-23). All 130 executed assertions pass;
-> 0 errored.**
+> (Suite 11) 10/10 (2026-05-23), tenant_invites lifecycle (Suite 9)
+> 9/9 (2026-05-23). All 139 executed assertions pass; 0 errored.**
 >
-> **Phase 3 coverage gap:** two additional suites (9, 10) covering
-> tenant_invites lifecycle and units/properties tenant-self +
-> lease-mediated branches are listed below but **not yet authored**.
-> Each mirrors patterns covered by existing suites — see
-> SECURITY_REVIEW.md §11.6 for per-suite justification and the order in
-> which they should be authored before Phase 4 ships any new portal RLS
-> surface.
+> **Phase 3 coverage gap:** one additional suite (10) covering
+> units/properties tenant-self + lease-mediated branches is listed below
+> but **not yet authored**. Mirrors patterns covered by existing suites
+> — see SECURITY_REVIEW.md §11.6 for justification.
 >
 > Run against the dev database over the Session pooler connection. Human RLS
 > sign-off remains outstanding — see SECURITY_REVIEW.md.
@@ -208,16 +205,29 @@ SECURITY DEFINER (`pg_proc.prosecdef`); EXECUTE is granted to
 | A7 | (privileged) | `routine_privileges` for accept_tenant_invite | ✅ no PUBLIC/anon; EXECUTE to authenticated + service_role |
 | A8 | acceptor (auth) | call with token_hash off-by-one from real | ✅ ok=false, code=not_found; INV1 unchanged |
 
-## 4h. Phase 3 Suite 9 — tenant_invites lifecycle  *(DEFERRED — not yet authored)*
+## 4h. Phase 3 Suite 9 — tenant_invites lifecycle
 
-Would verify the `tenant_invites_select` / `tenant_invites_write` policies
-from migration `20260522000100` (`can_write_tenants()` gate on both
-branches), the mutual-exclusion check constraint
-(`accepted_at IS NULL OR revoked_at IS NULL`), and the FK cascade on
-`organizations`/`tenants` delete. Pattern mirrors Suite 3 RW1–RW6 (staff
-INSERT gated on role) and the existing tenants_write tests. Deferred —
-the policy bodies are structurally identical to `tenants_write` (Suite 2
-R2/R3) with the table name swapped.
+Implemented in `supabase/tests/rls_phase3_tenant_invites_lifecycle.sql`.
+Verifies the `tenant_invites_select` / `tenant_invites_write` policies
+from migration `20260522000100` (both gated on `can_write_tenants()`)
+plus the mutual-exclusion CHECK constraint
+(`accepted_at IS NULL OR revoked_at IS NULL`). PROPERTY_MANAGER and
+LEASING_AGENT can read+write; MAINTENANCE_TECH is `is_org_staff` but
+NOT `can_write_tenants` so reads AND writes deny for them. The CHECK
+constraint rejects any insert with both `accepted_at` and `revoked_at`
+non-null.
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| I1 | Org A PROPERTY_MANAGER | `select` `tenant_invites` | ✅ 1 row (seed) |
+| I2 | Org A LEASING_AGENT | `select` `tenant_invites` | ✅ 1 row (can_write_tenants parity with PM) |
+| I3 | Org A MAINTENANCE_TECH | `select` `tenant_invites` | ✅ **0 rows** (no can_write_tenants) |
+| I4 | Org A PROPERTY_MANAGER | `insert` invite | ✅ allowed; row count + 1 |
+| I5 | Org A LEASING_AGENT | `insert` invite | ✅ allowed |
+| I6 | Org A MAINTENANCE_TECH | `insert` invite | ✅ **rejected** (can_write_tenants gate) |
+| I7 | Org B PROPERTY_MANAGER | `select` (Org A invites) | ✅ **0 rows** (cross-org pin) |
+| I8 | Org A PROPERTY_MANAGER | `insert` with both `accepted_at` and `revoked_at` set | ✅ **rejected** by CHECK constraint |
+| I9 | Org A PROPERTY_MANAGER | `update` seed invite — set `revoked_at` + `revoked_by` | ✅ allowed; fields actually set |
 
 ## 4i. Phase 3 Suite 10 — tenant-self units / properties + lease-mediated  *(DEFERRED — not yet authored)*
 
@@ -291,6 +301,7 @@ npx tsx scripts/run-sql.ts supabase/tests/user_columns_pin.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase2_blockers_closed.sql
 npx tsx scripts/run-sql.ts supabase/tests/users_select_staff_gate.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_leases_tenant_self.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_tenant_invites_lifecycle.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_accept_tenant_invite.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_maintenance_tenant_self.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_messages_immutable.sql
@@ -319,3 +330,4 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 14 / 14, 0 errored | `rls_phase3_messages_immutable.sql` — Suite 12 — M1-M14 (immutability + sender_role gating) |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 7 / 7, 0 errored | `rls_phase3_leases_tenant_self.sql` — Suite 7 — L1-L7 (leases tenant-self + manager-only write) |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 10 / 10, 0 errored | `rls_phase3_maintenance_tenant_self.sql` — Suite 11 — Q1-Q10 (maintenance tenant-self SELECT + INSERT defense-in-depth) |
+| 2026-05-23 | `scripts/run-sql.ts` (pg) | 9 / 9, 0 errored | `rls_phase3_tenant_invites_lifecycle.sql` — Suite 9 — I1-I9 (tenant_invites can_write_tenants gating + mutual-exclusion CHECK + revoke lifecycle) |
