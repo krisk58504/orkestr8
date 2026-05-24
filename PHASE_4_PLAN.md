@@ -36,6 +36,67 @@ Four bullets. Plus three named tables in SPEC's core tables list (lines
 
 That is the totality of what SPEC names for Phase 4.
 
+## 0.5. Step 0 decisions (closed 2026-05-23)
+
+The seven open questions surfaced in §7 have been decided. The original
+§7 entries are retained as a record of what got decided; this section
+records the decisions themselves. Six of the seven match the §7
+recommendation; the seventh (RLS read scope) deliberately overrides the
+recommendation toward the tighter posture.
+
+1. **Lead↔tenant identity model: SEPARATE records.** Lead and tenant
+   are distinct rows. Conversion (slice 9d) creates a new tenant row
+   from application data. Provenance via `tenants.source_application_id`
+   (additive column added in slice 9d per §2d). Matches §7 risk 1
+   recommendation.
+2. **`applications.lead_id` nullable.** Walk-in applicants can submit
+   applications without a prior lead row. UI handles the null case (no
+   lead detail link rendered when `application.lead_id IS NULL`).
+   Matches §7 risk 2 recommendation.
+3. **`create_lease_with_tenants` RPC authority widened.** Slice 9d
+   will modify the RPC's internal authority check from
+   `is_org_manager()` to `can_write_tenants()` so a LEASING_AGENT can
+   convert directly without manager escalation. **This is a Phase 4
+   touch on existing Phase 3 surface.** The RPC was created in
+   Phase 3 (migration M3LR) and accepted under §11 sign-off with the
+   narrower authority; widening it requires §12 to explicitly
+   re-certify the RPC under the new authority cohort. Matches §7
+   risk 7 recommendation (option b).
+4. **`/leasing` ships as a list view in slice 9a baseline.** Kanban is
+   deferred as an explicit follow-up slice (call it 9a.2 if it materializes)
+   to be considered after walk-testing reveals the workflow benefit.
+   Status is a sortable/filterable column in the list view, not a
+   visual swim-lane in the baseline. Matches §7 risk 3 recommendation.
+5. **Manual invite on conversion.** Slice 9d's
+   `approveApplicationAndConvert` action creates the tenant + lease
+   and stops. The LA fires `sendInvite` as a separate manual step
+   using the existing Phase 3 send-invite UI on the new tenant's row.
+   The conversion action does NOT call `sendInvite` automatically.
+   Fewer side-effects per action; LA can confirm everything looks
+   right before sending the email. Matches §7 risk 5 recommendation.
+6. **No tour confirmation emails.** Slice 9b tour scheduling is
+   in-app only. No new `tour.confirmation` email template, no
+   `notifyTourScheduled` helper, no Gate 3 surface extension. Tour
+   notifications deferred to Phase 6 when the Automation engine
+   exists to model them as triggered automations rather than
+   per-action sends. Matches §7 risk 6 recommendation.
+7. **RLS read scope: NARROW (`can_write_tenants()`).** Both SELECT
+   and WRITE on `leads` / `tours` / `applications` are gated on
+   `(organization_id = current_user_org_id() AND can_write_tenants())
+   OR is_super_admin()`. **This OVERRIDES the §3d / §7 risk 7-style
+   recommendation** which had suggested broad-read (`is_org_staff()`)
+   to match Phase 3's `messages` posture. Reasoning for the override:
+   lead/application data carries more sensitive PII (monthly income,
+   employment status, prior address, background-check consent) than
+   conversation transcripts. The conservative posture — read access
+   gated to the same cohort that can act on the data — is more
+   appropriate. MAINTENANCE_TECH does not need to see prospect
+   financial profiles to do their job.
+
+These seven decisions are locked. Slice 9a authoring begins after this
+update. Any deviation discovered during execution requires re-opening
+the decision here, not silently changing implementation.
+
 ## 1. SCOPE
 
 ### What SPEC says Phase 4 includes
@@ -276,26 +337,33 @@ with anonymous grant" (Phase 3 accept_tenant_invite) variety.
 ### 3b. RLS shape per new table
 
 All three new tables (`leads`, `tours`, `applications`) follow the
-same shape, mirroring the **broad-read / narrow-write split** Phase 3
-established for `messages`:
+same shape — **narrow read AND narrow write**, both gated on
+`can_write_tenants()` (= management + leasing roles). This is the
+tighter posture compared to Phase 3's `messages` table, which split
+broad-read from narrow-write. The decision to narrow read scope is
+**locked per §0.5 decision 7** (overriding the initial recommendation):
 
 | Table | SELECT | INSERT | UPDATE | DELETE |
 |---|---|---|---|---|
-| `leads` | `is_org_staff()` in org **OR** super_admin | `can_write_tenants()` in org **OR** super_admin | `can_write_tenants()` in org **OR** super_admin | `can_write_tenants()` in org **OR** super_admin |
+| `leads` | `can_write_tenants()` in org **OR** super_admin | `can_write_tenants()` in org **OR** super_admin | `can_write_tenants()` in org **OR** super_admin | `can_write_tenants()` in org **OR** super_admin |
 | `tours` | (same shape) | (same shape) | (same shape) | (same shape) |
 | `applications` | (same shape) | (same shape) | (same shape) | (same shape) |
 
-**Rationale for the split:**
+**Rationale for the narrow-read posture (per §0.5 decision 7):**
 
-- **Broad read** (`is_org_staff()`): a maintenance tech might
-  legitimately want context on a prospect for a property they service.
-  Read access doesn't expose sensitive financial data — applications
-  carry monthly_income but that's already exposed to all staff via
-  tenants table screens in Phase 3.
-- **Narrow write** (`can_write_tenants()` = management + leasing
-  roles): only the cohort with tenant-write authority can mutate
-  prospect data. Matches the existing posture on `tenants`,
-  `tenant_invites`.
+- Lead and application data carries sensitive PII
+  (`monthly_income`, `employment_status`, `prior_address`,
+  `background_check_consent`). MAINTENANCE_TECH and ACCOUNTING roles —
+  which are `is_org_staff()` but NOT `can_write_tenants()` — have no
+  job-function need to see prospect financial profiles.
+- This differs from `messages` (Phase 3), where the broad-read posture
+  was chosen because conversation transcripts can carry property /
+  maintenance context useful to any staff. Lead/application records do
+  not have the same cross-functional read need.
+- **Narrow write** is unchanged from the original proposal:
+  `can_write_tenants()` (= management + leasing) is the cohort with
+  authority to act on prospect records. Matches the existing posture on
+  `tenants` and `tenant_invites`.
 
 Each policy will use the standard one-policy-per-operation +
 `for all` shape from Phase 1/2 — drop+recreate idempotency, USING +
@@ -327,19 +395,24 @@ pin) had analogues. Phase 4 walks the same checklist:
 - **§8.4 analogue — linchpin column write protection.** No new
   user-linkage column. **Not applicable.**
 
-### 3d. Open RLS question — read scope width
+### 3d. Read scope — resolved (narrow)
 
-The proposal above puts SELECT on `is_org_staff()` (broad). The
-alternative is `can_write_tenants()` (narrow — same as write). The
-tighter option:
+Originally surfaced as an open question with a provisional broad-read
+recommendation. **Resolved 2026-05-23 to narrow read** (see §0.5
+decision 7). The §3b table above reflects the locked posture.
 
-- Pros: tighter information-disclosure surface. Maintenance tech /
-  accounting doesn't see prospect data they have no reason to act on.
-- Cons: a maintenance tech investigating a property issue can't see
-  "we have three tours scheduled there this week" context.
+The trade considered:
+- Broad read (`is_org_staff()`, matching `messages` precedent) would
+  let MAINTENANCE_TECH see tour schedules at properties they service.
+- Narrow read (`can_write_tenants()`, matching `tenant_invites`
+  precedent) keeps prospect financial PII visible only to the cohort
+  with authority to act on it.
 
-Recommendation: **broad read**, matching Phase 3's `messages` posture.
-Flag as a Step 0 decision in §8 so it's deliberate.
+Narrow read wins on PII sensitivity grounds: lead/application records
+carry monthly income, employment status, prior address, and
+background-check consent — a different sensitivity profile than
+conversation transcripts. The MAINTENANCE_TECH "tour context" use case
+was judged insufficient to justify exposing financial profiles.
 
 ## 4. NEW GATES
 
@@ -350,7 +423,7 @@ surface area* of exactly one existing gate:
 
 | Gate | Phase 4 extension |
 |---|---|
-| **Gate 1 (RLS)** | Three new tables, six new policies (2 per table: select + write). All follow established patterns from Phase 1/2/3 — no new helpers, no novel surfaces. The §12 sign-off (analog of §11) will be significantly shorter than §11 was. |
+| **Gate 1 (RLS)** | Three new tables, six new policies (2 per table: select + write). All follow established patterns from Phase 1/2/3 — no new helpers, no novel surfaces. **Plus one modification to Phase 3 surface**: per §0.5 decision 3, slice 9d will modify the `create_lease_with_tenants` SECURITY DEFINER RPC (created in Phase 3 M3LR, accepted under §11 sign-off) to widen its internal authority check from `is_org_manager()` to `can_write_tenants()`. This is a touch on existing Phase 3 surface that §11 already certified — §12 must explicitly re-certify the RPC under the expanded authority. The change is small (one boolean check in the function body) but it crosses an already-signed Gate 1 boundary, so the re-certification is required. |
 | **Gate 2 (AI/automation)** | Untouched. Lead scoring, application auto-decisioning, and similar AI features are explicitly deferred per §1 — Phase 6. |
 | **Gate 3 (Email)** | Untouched unless tour confirmation emails are added (deferred per §1). If tour emails are wanted, they go through the existing `sendEmail()` chokepoint with a new template; no gate change. |
 | **Gate 4 (Production)** | Untouched. |
@@ -462,7 +535,7 @@ shape, so one suite covers all three.
 
 | File | Proves |
 |---|---|
-| `supabase/tests/rls_phase4_leasing.sql` | (a) `can_write_tenants()` gating on write — PROPERTY_MANAGER and LEASING_AGENT can INSERT/UPDATE/DELETE leads/tours/applications in their org; MAINTENANCE_TECH cannot. (b) Cross-org isolation — Org A leads/tours/applications invisible to Org B staff. (c) `is_org_staff()` gating on read — MAINTENANCE_TECH CAN read (broad-read split, per §3b). (d) Application status transition rules are NOT enforced by RLS — verify a vendor-style direct UPDATE bypasses the transition rule (confirming the rule lives in app-layer, per §3c.§8.2). |
+| `supabase/tests/rls_phase4_leasing.sql` | (a) `can_write_tenants()` gating on write — PROPERTY_MANAGER and LEASING_AGENT can INSERT/UPDATE/DELETE leads/tours/applications in their org; MAINTENANCE_TECH cannot. (b) Cross-org isolation — Org A leads/tours/applications invisible to Org B staff. (c) `can_write_tenants()` gating on READ too (per §0.5 decision 7 — narrow-read posture) — MAINTENANCE_TECH CANNOT read leads/tours/applications even within their own org. The SELECT-and-write symmetry is the key Phase 4 RLS property, distinct from Phase 3's `messages` broad-read split. (d) Application status transition rules are NOT enforced by RLS — verify a direct UPDATE bypasses the transition rule (confirming the rule lives in app-layer, per §3c.§8.2). |
 
 Pattern mirrors **Phase 3 Suite 9** (tenant_invites lifecycle):
 single-table shape repeated three times with a small assertion table.
@@ -512,6 +585,10 @@ plus a few cleanup verifications.
 Highest-stakes, in rough order. Each item gets a provisional
 recommendation but the decision is deferred to Step 0 of execution.
 
+**All seven items resolved 2026-05-23 — see §0.5 for the locked
+decisions.** Original entries retained below as a record of what got
+considered and what got decided.
+
 1. **Lead → tenant identity model.** Two options: (a) leads and
    tenants are separate entities; conversion CREATES a new tenant row
    from application data (recommended). (b) leads ARE proto-tenants
@@ -520,19 +597,21 @@ recommendation but the decision is deferred to Step 0 of execution.
    queries, easier history ("this tenant came from this application"
    via the `source_application_id` FK). The cost is that the same
    person's data lives in two rows (lead + tenant) if they convert.
-   Acceptable trade.
+   Acceptable trade. **Resolved 2026-05-23 — see §0.5 decision 1
+   (option A, separate records).**
 2. **`applications.lead_id` nullable or not.** Walk-in applicants
    might not have a prior lead row (someone walks in off the street
    and applies immediately). **Recommendation: nullable.** Means the
    "every application has a lead" invariant doesn't hold — UI handles
    the missing-lead case via fallback rendering on the detail page.
    Forcing a lead row for walk-ins would create stub leads that clutter
-   the pipeline.
+   the pipeline. **Resolved 2026-05-23 — see §0.5 decision 2 (nullable).**
 3. **Kanban vs list for `/leasing`.** SPEC's GLOBAL UI mentions Kanban
    boards (line 259). Lead pipeline is the textbook Kanban use case
    (columns = statuses). **Recommendation: ship list view in slice 9a
    baseline; add Kanban as a follow-up UI slice if needed.** Don't
-   block 9a on the more complex UI.
+   block 9a on the more complex UI. **Resolved 2026-05-23 — see §0.5
+   decision 4 (list-first; Kanban deferred to follow-up 9a.2).**
 4. **Application status workflow rigor.** The `application_status`
    enum has 6 values with implicit transition rules
    (`draft → submitted → under_review → approved/rejected`). Per
@@ -541,7 +620,9 @@ recommendation but the decision is deferred to Step 0 of execution.
    enforcement.** Server action validates `currentStatus → newStatus`
    against an allowed-set map; returns a friendly error on disallowed
    transitions. RLS test (above) verifies this is the only enforcement
-   layer (no RESTRICTIVE policy).
+   layer (no RESTRICTIVE policy). **Implicitly resolved — not raised in
+   §0.5 because the original recommendation (app-layer enforcement)
+   stands; no decision needed to deviate.**
 5. **Auto-invite on conversion vs manual.** Slice 9d's
    `approveApplicationAndConvert` action could automatically fire
    `sendInvite` after creating the tenant, OR leave it as a separate
@@ -550,11 +631,15 @@ recommendation but the decision is deferred to Step 0 of execution.
    Fewer side-effects per action; LA can confirm everything looks
    right before sending the email; matches the conservative posture
    of every other Phase 3 / Phase 4 action that touches the email
-   chokepoint.
+   chokepoint. **Resolved 2026-05-23 — see §0.5 decision 5 (manual; no
+   checkbox in the convert dialog either — the action just creates
+   tenant + lease and stops).**
 6. **Tour notifications to the prospect.** If we fire confirmation
    emails to the prospect (lead's email), we hit Gate 3 with a new
    template. SPEC doesn't require it. **Recommendation: defer.** Staff
-   can call or email manually. Keeps slice 9b focused.
+   can call or email manually. Keeps slice 9b focused. **Resolved
+   2026-05-23 — see §0.5 decision 6 (defer; no `tour.confirmation`
+   template, no Gate 3 surface extension this phase).**
 7. **RPC authority for conversion — manager-only or include
    leasing-agent.** The existing `create_lease_with_tenants` RPC
    (M3LR) checks `is_org_manager() OR is_super_admin()` in its body.
@@ -569,16 +654,31 @@ recommendation but the decision is deferred to Step 0 of execution.
    schema change and goes into the Phase 4 sign-off. Alternative: leave
    the RPC alone and have the conversion action invoke it via the
    admin client (bypassing the authority check inside the SECURITY
-   DEFINER body). Worse — bypasses an explicit safety check.
+   DEFINER body). Worse — bypasses an explicit safety check. **Resolved
+   2026-05-23 — see §0.5 decision 3 (option b, widen to
+   `can_write_tenants()` via slice 9d migration; §12 sign-off must
+   re-certify the RPC).**
+
+**Additionally resolved at Step 0 (not originally in §7)**: RLS read
+scope width (originally §3d). The §3d / §3b open question between
+broad-read (`is_org_staff()`) and narrow-read (`can_write_tenants()`)
+was resolved to narrow-read — **see §0.5 decision 7**. This OVERRIDES
+the original §3d / §3b recommendation toward broad-read; reasoning
+documented in §0.5 and §3d. The §3b policy table reflects the locked
+narrow posture.
 
 ## 8. SUGGESTED ORDER OF WORK
 
 A sensible sequence — same shape as Phase 2/3 (decisions → schema → RLS
 → modules → tests → sign-off).
 
-**Step 0 — Decisions documented (no code).** Write down, in
-`PHASE_4_DECISIONS.md` or as a §0a addendum to this file, the answers
-to:
+**Step 0 — Decisions documented (no code). ✅ CLOSED 2026-05-23 — see §0.5.**
+The seven open questions surfaced in §7 (plus the §3d read-scope
+question) were resolved and recorded in §0.5 of this file. Six
+decisions matched the original §7 recommendations; one (read scope)
+deliberately overrode the recommendation toward the tighter posture.
+The original §7 entries below are retained as a record of what was
+considered. The work below was:
 - §7 risk 1: lead↔tenant identity model (recommend A: separate).
 - §7 risk 2: `applications.lead_id` nullability (recommend nullable).
 - §7 risk 3: Kanban vs list for `/leasing` (recommend list-first).
