@@ -372,8 +372,9 @@ trusted callers as defense in depth. Verified by
   AI-log writer; this §11 confirms the packet's findings remain accurate at
   the snapshot above, then inventories the eight **Phase 3** additions the
   packet predates.
-- Cumulative RLS test coverage: **139 assertions across 11 suites** (84 prior
-  + 15 Suite 8 + 14 Suite 12 + 7 Suite 7 + 10 Suite 11 + 9 Suite 9), all passing as of 2026-05-23.
+- Cumulative RLS test coverage: **150 assertions across 12 suites** (84 prior
+  + 15 Suite 8 + 14 Suite 12 + 7 Suite 7 + 10 Suite 11 + 9 Suite 9 + 11 Suite 10),
+  all passing as of 2026-05-23. **All six Phase 3 suites (7-12) are now authored.**
 
 ### 11.1 Phase 3 RLS additions
 
@@ -781,20 +782,28 @@ Six Phase 3 suites are documented in RLS_TEST_PLAN.md §4f-§4k.
 | 7 — leases tenant-self | `leases_select` tenant branch via `tenants.lease_id`; `leases_write` manager-only gating | **authored 2026-05-23** — `supabase/tests/rls_phase3_leases_tenant_self.sql`, 7/7 passing |
 | 8 — accept_tenant_invite RPC | atomic 4-step transition; 4 classified error codes; SECURITY DEFINER + EXECUTE grant posture; exact `token_hash` matching | **authored 2026-05-23** — `supabase/tests/rls_phase3_accept_tenant_invite.sql`, 15/15 passing |
 | 9 — tenant_invites lifecycle | `can_write_tenants` gate on both branches; mutual-exclusion CHECK; revoke lifecycle path | **authored 2026-05-23** — `supabase/tests/rls_phase3_tenant_invites_lifecycle.sql`, 9/9 passing |
-| 10 — tenant-self units / properties + lease-mediated | direct (M3T) and lease-mediated (M3LU) tenant-self branches | **deferred** — direct branches mirror `tenants_select`; lease-mediated branches mirror `leases_select` (both already tested for their own table) |
+| 10 — tenant-self units / properties + lease-mediated | direct (M3T) and lease-mediated (M3LU) tenant-self branches; ended-lease regression for the no-status-filter design (§11.1.7) | **authored 2026-05-23** — `supabase/tests/rls_phase3_units_properties_tenant_self.sql`, 11/11 passing |
 | 11 — tenant-self maintenance | M3M select + insert; defense-in-depth on insert | **authored 2026-05-23** — `supabase/tests/rls_phase3_maintenance_tenant_self.sql`, 10/10 passing |
 | 12 — messages immutability + sender_role | RLS no-UPDATE / no-DELETE; sender_role gating; sender_id forgery guard; defense-in-depth on tenant insert | **authored 2026-05-23** — `supabase/tests/rls_phase3_messages_immutable.sql`, 14/14 passing |
 
-Suites 8 and 12 were authored inline with §11 because they cover the
-**novel** patterns introduced in Phase 3 (SECURITY DEFINER with anonymous
-grant; RLS-enforced immutability). Suites 7/9/10/11 cover structurally
-identical patterns to already-tested ones and are deferred as listed.
+Suites 8 and 12 were authored first because they cover the **novel**
+patterns introduced in Phase 3 (SECURITY DEFINER with anonymous grant;
+RLS-enforced immutability). Suites 7, 11, 9, and 10 were authored as a
+follow-up arc in that order — simplest to most permutation-heavy —
+and now close the Phase 3 RLS coverage gap. Notable assertions in the
+follow-up suites:
 
-**Required before Phase 4 ships any new portal RLS surface:** Suites
-7/9/10/11 should be authored before adding any new tenant-self or
-vendor-self branches to additional tables, so the test set keeps up
-with the policy surface. They are NOT Gate 1 blockers for the current
-posture.
+- **Suite 7 L7** — tenant INSERT lease rejected by manager-only WITH CHECK.
+- **Suite 11 Q3** — T2 sees the staff-created request via the new
+  tenant-by-tenant_id branch (not via reporter-self).
+- **Suite 11 Q8/Q9/Q10** — each independent defense-in-depth predicate
+  on tenant INSERT verified by isolated rejection.
+- **Suite 9 I8** — the mutual-exclusion CHECK constraint rejects an
+  invite with both `accepted_at` and `revoked_at` set.
+- **Suite 10 U6** — design-decision regression: tenant with
+  `lease.status = 'ended'` still sees the unit. If a future migration
+  accidentally adds `AND status != 'ended'` to the lease join, this
+  catches it.
 
 ### 11.7 Email-safety delta
 
@@ -853,10 +862,10 @@ By signing below, the reviewer attests that:
    trust assumption is judged acceptable.
 4. The known limitations in 11.5 are acknowledged as known scope-bounded
    gaps, not Gate 1 blockers.
-5. The RLS test-plan delta in 11.6 is acknowledged: Suites 8 and 12 cover
-   the novel Phase 3 patterns; Suites 7/9/10/11 are deferred work
-   required before Phase 4 ships additional portal-user RLS surface,
-   but do not block Gate 1 certification of the current policy posture.
+5. The RLS test-plan delta in 11.6 is acknowledged: all six Phase 3
+   suites (7-12) are now authored and passing — 66 new assertions
+   covering the Phase 3 RLS surface, on top of the 84 prior assertions.
+   No Phase 3 RLS surface remains uncovered by automated test.
 6. The email-safety delta in 11.7 and EMAIL_SAFETY.md §7 are
    gate-tightening improvements, not gate relaxations.
 

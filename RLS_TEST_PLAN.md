@@ -5,16 +5,17 @@
 > work orders) 23/23 (2026-05-19), user-columns pin (SECURITY_REVIEW.md
 > §8.4 fix) 10/10 (2026-05-19), Phase 2 §8.1/§8.2/§8.3 closure 25/25
 > (2026-05-19), and users_select staff gate (SECURITY_REVIEW.md §7 fix)
-> 8/8 (2026-05-19). Phase 3 partial: accept_tenant_invite RPC (Suite 8)
+> 8/8 (2026-05-19). Phase 3 complete: accept_tenant_invite RPC (Suite 8)
 > 15/15 (2026-05-23), messages immutability (Suite 12) 14/14 (2026-05-23),
 > leases tenant-self (Suite 7) 7/7 (2026-05-23), maintenance tenant-self
 > (Suite 11) 10/10 (2026-05-23), tenant_invites lifecycle (Suite 9)
-> 9/9 (2026-05-23). All 139 executed assertions pass; 0 errored.**
+> 9/9 (2026-05-23), units/properties tenant-self + lease-mediated
+> (Suite 10) 11/11 (2026-05-23). All 150 executed assertions pass;
+> 0 errored.**
 >
-> **Phase 3 coverage gap:** one additional suite (10) covering
-> units/properties tenant-self + lease-mediated branches is listed below
-> but **not yet authored**. Mirrors patterns covered by existing suites
-> — see SECURITY_REVIEW.md §11.6 for justification.
+> **Phase 3 RLS coverage gap CLOSED.** All six Phase 3 suites (7-12) are
+> now authored and passing. Human RLS sign-off remains outstanding — see
+> SECURITY_REVIEW.md.
 >
 > Run against the dev database over the Session pooler connection. Human RLS
 > sign-off remains outstanding — see SECURITY_REVIEW.md.
@@ -229,18 +230,29 @@ non-null.
 | I8 | Org A PROPERTY_MANAGER | `insert` with both `accepted_at` and `revoked_at` set | ✅ **rejected** by CHECK constraint |
 | I9 | Org A PROPERTY_MANAGER | `update` seed invite — set `revoked_at` + `revoked_by` | ✅ allowed; fields actually set |
 
-## 4i. Phase 3 Suite 10 — tenant-self units / properties + lease-mediated  *(DEFERRED — not yet authored)*
+## 4i. Phase 3 Suite 10 — tenant-self units / properties + lease-mediated
 
-Would verify the `units_select` / `properties_select` tenant-self
-branches from migrations `20260524000100` (direct via `tenants.unit_id`)
-and `20260525000100` (lease-mediated via `tenants.lease_id →
-leases.unit_id`). Four scenarios per table: tenant with direct unit_id
-populated; tenant with lease_id populated but unit_id null; tenant with
-both populated (both branches admit); tenant with neither (zero rows).
-Pattern matches Suite 1 #1/#2 cross-org test against a different
-predicate. Deferred — direct branches are structurally identical to
-`tenants_select` and the lease-mediated branch is structurally identical
-to `leases_select` (both already covered for their own table).
+Implemented in `supabase/tests/rls_phase3_units_properties_tenant_self.sql`.
+Verifies the `units_select` / `properties_select` tenant-self branches
+from migrations `20260524000100` (direct via `tenants.unit_id`) and
+`20260525000100` (lease-mediated via `tenants.lease_id → leases.unit_id`).
+Four tenant scenarios per table + a regression for the §11.1.7 design
+decision that the lease join has no status filter (TE with a lease where
+`status = 'ended'` still sees the unit/property).
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| U1 | TA (`unit_id`=UA1, no lease) | `select` `units` | ✅ 1 row — UA1 (direct branch) |
+| U2 | TB (`unit_id` null, lease→UA2) | `select` `units` | ✅ 1 row — UA2 (lease-mediated branch) |
+| U3 | TC (`unit_id`=UA1 + lease→UA2) | `select` `units` | ✅ 2 rows — UA1 + UA2 (both branches) |
+| U4 | TD (`unit_id` null, no lease) | `select` `units` | ✅ **0 rows** (neither branch) |
+| U5 | TB | `select` `units` filtered to UB1 (Org B) | ✅ **0 rows** (cross-org) |
+| U6 | TE (lease.status = 'ended', unit_id=UA1) | `select` `units` | ✅ 1 row — UA1; lease join has **no status filter** (§11.1.7 regression) |
+| P1 | TA | `select` `properties` | ✅ 1 row — PA1 (direct chain to property) |
+| P2 | TB | `select` `properties` | ✅ 1 row — PA2 (lease-mediated chain to property) |
+| P3 | TC | `select` `properties` | ✅ 2 rows — PA1 + PA2 |
+| P4 | TD | `select` `properties` | ✅ **0 rows** |
+| P5 | TB | `select` `properties` filtered to PB1 (Org B) | ✅ **0 rows** (cross-org) |
 
 ## 4j. Phase 3 Suite 11 — tenant-self maintenance INSERT/SELECT
 
@@ -303,6 +315,7 @@ npx tsx scripts/run-sql.ts supabase/tests/users_select_staff_gate.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_leases_tenant_self.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_tenant_invites_lifecycle.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_accept_tenant_invite.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_units_properties_tenant_self.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_maintenance_tenant_self.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_messages_immutable.sql
 # equivalent, if psql is available:
@@ -331,3 +344,4 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 7 / 7, 0 errored | `rls_phase3_leases_tenant_self.sql` — Suite 7 — L1-L7 (leases tenant-self + manager-only write) |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 10 / 10, 0 errored | `rls_phase3_maintenance_tenant_self.sql` — Suite 11 — Q1-Q10 (maintenance tenant-self SELECT + INSERT defense-in-depth) |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 9 / 9, 0 errored | `rls_phase3_tenant_invites_lifecycle.sql` — Suite 9 — I1-I9 (tenant_invites can_write_tenants gating + mutual-exclusion CHECK + revoke lifecycle) |
+| 2026-05-23 | `scripts/run-sql.ts` (pg) | 11 / 11, 0 errored | `rls_phase3_units_properties_tenant_self.sql` — Suite 10 — U1-U6 + P1-P5 (units/properties tenant-self direct + lease-mediated, ended-lease regression) |
