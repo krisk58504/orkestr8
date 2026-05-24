@@ -6,6 +6,8 @@
 import type {
   AiMode,
   BuildingStatus,
+  LeadSource,
+  LeadStatus,
   LeaseStatus,
   MaintenanceCategory,
   MaintenancePriority,
@@ -171,6 +173,27 @@ export const LEASE_STATUS_META: Record<LeaseStatus, { label: string; tone: Tone 
   upcoming: { label: "Upcoming", tone: "info" },
   active: { label: "Active", tone: "success" },
   ended: { label: "Ended", tone: "neutral" },
+};
+
+/** Phase 4: pipeline status for prospects in the Leasing CRM. */
+export const LEAD_STATUS_META: Record<LeadStatus, { label: string; tone: Tone }> = {
+  new: { label: "New", tone: "info" },
+  contacted: { label: "Contacted", tone: "info" },
+  qualified: { label: "Qualified", tone: "success" },
+  tour_scheduled: { label: "Tour Scheduled", tone: "info" },
+  applied: { label: "Applied", tone: "warning" },
+  converted: { label: "Converted", tone: "success" },
+  disqualified: { label: "Disqualified", tone: "neutral" },
+  lost: { label: "Lost", tone: "neutral" },
+};
+
+/** Phase 4: where the lead came from (attribution). */
+export const LEAD_SOURCE_META: Record<LeadSource, { label: string; tone: Tone }> = {
+  website: { label: "Website", tone: "neutral" },
+  referral: { label: "Referral", tone: "neutral" },
+  walkin: { label: "Walk-in", tone: "neutral" },
+  partner: { label: "Partner", tone: "neutral" },
+  other: { label: "Other", tone: "neutral" },
 };
 
 export const BUILDING_STATUS_META: Record<

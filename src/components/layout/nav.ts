@@ -68,7 +68,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: "Leasing",
     items: [
-      { label: "Leasing CRM", href: "/leasing", icon: UserPlus, enabled: false },
+      { label: "Leasing", href: "/leasing", icon: UserPlus, enabled: true },
       { label: "Applications", href: "/applications", icon: FileCheck, enabled: false },
     ],
   },

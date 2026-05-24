@@ -764,6 +764,46 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["leases"]["Insert"]>;
         Relationships: [];
       };
+      leads: {
+        Row: {
+          id: string;
+          organization_id: string;
+          status: Database["public"]["Enums"]["lead_status"];
+          source: Database["public"]["Enums"]["lead_source"];
+          first_name: string;
+          last_name: string;
+          email: string | null;
+          phone: string | null;
+          assigned_to: string | null;
+          desired_property_id: string | null;
+          desired_move_in: string | null;
+          desired_bedrooms: number | null;
+          desired_budget: number | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          status?: Database["public"]["Enums"]["lead_status"];
+          source?: Database["public"]["Enums"]["lead_source"];
+          first_name: string;
+          last_name: string;
+          email?: string | null;
+          phone?: string | null;
+          assigned_to?: string | null;
+          desired_property_id?: string | null;
+          desired_move_in?: string | null;
+          desired_bedrooms?: number | null;
+          desired_budget?: number | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["leads"]["Insert"]>;
+        Relationships: [];
+      };
       messages: {
         Row: {
           id: string;
@@ -932,6 +972,16 @@ export type Database = {
         | "paid";
       lease_status: "upcoming" | "active" | "ended";
       message_sender_role: "tenant" | "staff";
+      lead_status:
+        | "new"
+        | "contacted"
+        | "qualified"
+        | "tour_scheduled"
+        | "applied"
+        | "converted"
+        | "disqualified"
+        | "lost";
+      lead_source: "website" | "referral" | "walkin" | "partner" | "other";
     };
     CompositeTypes: { [_ in never]: never };
   };
