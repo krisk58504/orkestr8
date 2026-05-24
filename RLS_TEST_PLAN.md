@@ -6,16 +6,17 @@
 > §8.4 fix) 10/10 (2026-05-19), Phase 2 §8.1/§8.2/§8.3 closure 25/25
 > (2026-05-19), and users_select staff gate (SECURITY_REVIEW.md §7 fix)
 > 8/8 (2026-05-19). Phase 3 partial: accept_tenant_invite RPC (Suite 8)
-> 15/15 (2026-05-23), messages immutability (Suite 12) 14/14 (2026-05-23).
-> All 113 executed assertions pass; 0 errored.**
+> 15/15 (2026-05-23), messages immutability (Suite 12) 14/14 (2026-05-23),
+> leases tenant-self (Suite 7) 7/7 (2026-05-23). All 120 executed
+> assertions pass; 0 errored.**
 >
-> **Phase 3 coverage gap:** four additional suites (7, 9, 10, 11) covering
-> leases tenant-self, tenant_invites lifecycle, units/properties tenant-self
-> + lease-mediated branches, and tenant-self maintenance INSERT/SELECT
-> branches are listed below but **not yet authored**. Each mirrors patterns
-> covered by existing suites — see SECURITY_REVIEW.md §11.6 for per-suite
-> justification and the order in which they should be authored before
-> Phase 4 ships any new portal RLS surface.
+> **Phase 3 coverage gap:** three additional suites (9, 10, 11) covering
+> tenant_invites lifecycle, units/properties tenant-self + lease-mediated
+> branches, and tenant-self maintenance INSERT/SELECT branches are listed
+> below but **not yet authored**. Each mirrors patterns covered by existing
+> suites — see SECURITY_REVIEW.md §11.6 for per-suite justification and the
+> order in which they should be authored before Phase 4 ships any new
+> portal RLS surface.
 >
 > Run against the dev database over the Session pooler connection. Human RLS
 > sign-off remains outstanding — see SECURITY_REVIEW.md.
@@ -163,17 +164,24 @@ Org B with 1 staff (OWNER) for cross-org regression.
 | U7 | OWNER@A | `select … where organization_id = Org B` | ✅ 0 rows (cross-org) |
 | U8 | anon | `select * from users` | ✅ 0 rows / denied |
 
-## 4f. Phase 3 Suite 7 — leases tenant-self  *(DEFERRED — not yet authored)*
+## 4f. Phase 3 Suite 7 — leases tenant-self
 
-Would verify the `leases_select` tenant-self branch from migration
-`20260521000100`: a tenant linked via `tenants.lease_id` can SELECT that
-lease row; cannot SELECT other org leases; cannot SELECT leases that
-exist in their org but reference a different tenant; cannot UPDATE or
-DELETE any lease. Pattern matches Suite 3's `*_select` tenant-scoping
-shape (the staff branches are identical org-scoped). Deferred because
-the policy body is structurally identical to `tenants_select` (already
-covered by Suite 1 #7/#7b) and `maintenance_requests_select` shape,
-with the EXISTS subquery substituted on the appropriate join column.
+Implemented in `supabase/tests/rls_phase3_leases_tenant_self.sql`.
+Verifies the `leases_select` tenant-self branch and `leases_write`
+manager-only gating from migration `20260521000100`. A tenant linked
+via `tenants.lease_id` sees that lease only; tenants without a
+`lease_id` (T-orphan) see 0 leases; cross-org leases are invisible;
+no tenant can UPDATE / DELETE / INSERT.
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| L1 | Org A PROPERTY_MANAGER | `select` `leases` | ✅ 1 row (Org A only) |
+| L2 | tenant T1 (lease_id = L1) | `select` `leases` (filter id = L1) | ✅ 1 row via tenant-self branch |
+| L3 | tenant T1 | `select` `leases` (filter id = L2, Org B) | ✅ **0 rows** |
+| L4 | T-orphan (TENANT role, lease_id null) | `select` `leases` | ✅ **0 rows** |
+| L5 | tenant T1 | `update` L1 monthly_rent | ✅ **0 rows**; value unchanged |
+| L6 | tenant T1 | `delete` L1 | ✅ **0 rows**; row remains |
+| L7 | tenant T1 | `insert` a new lease | ✅ **rejected** (manager-only WITH CHECK) |
 
 ## 4g. Phase 3 Suite 8 — accept_tenant_invite RPC
 
@@ -270,6 +278,7 @@ npx tsx scripts/run-sql.ts supabase/tests/rls_phase2.sql
 npx tsx scripts/run-sql.ts supabase/tests/user_columns_pin.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase2_blockers_closed.sql
 npx tsx scripts/run-sql.ts supabase/tests/users_select_staff_gate.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_leases_tenant_self.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_accept_tenant_invite.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_messages_immutable.sql
 # equivalent, if psql is available:
@@ -295,3 +304,4 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 13 / 13, 5 / 5, 23 / 23, 10 / 10, 25 / 25, 0 errored | full re-run after §7 migration — no regressions in prior suites |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 15 / 15, 0 errored | `rls_phase3_accept_tenant_invite.sql` — Suite 8 — A1-A8 (acceptance RPC) |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 14 / 14, 0 errored | `rls_phase3_messages_immutable.sql` — Suite 12 — M1-M14 (immutability + sender_role gating) |
+| 2026-05-23 | `scripts/run-sql.ts` (pg) | 7 / 7, 0 errored | `rls_phase3_leases_tenant_self.sql` — Suite 7 — L1-L7 (leases tenant-self + manager-only write) |
