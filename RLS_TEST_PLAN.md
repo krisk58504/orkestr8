@@ -7,16 +7,17 @@
 > (2026-05-19), and users_select staff gate (SECURITY_REVIEW.md §7 fix)
 > 8/8 (2026-05-19). Phase 3 partial: accept_tenant_invite RPC (Suite 8)
 > 15/15 (2026-05-23), messages immutability (Suite 12) 14/14 (2026-05-23),
-> leases tenant-self (Suite 7) 7/7 (2026-05-23). All 120 executed
-> assertions pass; 0 errored.**
+> leases tenant-self (Suite 7) 7/7 (2026-05-23), maintenance tenant-self
+> (Suite 11) 10/10 (2026-05-23). All 130 executed assertions pass;
+> 0 errored.**
 >
-> **Phase 3 coverage gap:** three additional suites (9, 10, 11) covering
-> tenant_invites lifecycle, units/properties tenant-self + lease-mediated
-> branches, and tenant-self maintenance INSERT/SELECT branches are listed
-> below but **not yet authored**. Each mirrors patterns covered by existing
-> suites — see SECURITY_REVIEW.md §11.6 for per-suite justification and the
-> order in which they should be authored before Phase 4 ships any new
-> portal RLS surface.
+> **Phase 3 coverage gap:** two additional suites (9, 10) covering
+> tenant_invites lifecycle and units/properties tenant-self +
+> lease-mediated branches are listed below but **not yet authored**.
+> Each mirrors patterns covered by existing suites — see
+> SECURITY_REVIEW.md §11.6 for per-suite justification and the order in
+> which they should be authored before Phase 4 ships any new portal RLS
+> surface.
 >
 > Run against the dev database over the Session pooler connection. Human RLS
 > sign-off remains outstanding — see SECURITY_REVIEW.md.
@@ -231,18 +232,29 @@ predicate. Deferred — direct branches are structurally identical to
 `tenants_select` and the lease-mediated branch is structurally identical
 to `leases_select` (both already covered for their own table).
 
-## 4j. Phase 3 Suite 11 — tenant-self maintenance INSERT/SELECT  *(DEFERRED — not yet authored)*
+## 4j. Phase 3 Suite 11 — tenant-self maintenance INSERT/SELECT
 
-Would verify the `maintenance_requests_select` / `_insert` tenant-self
-branches from migration `20260526000100`. SELECT: tenant sees requests
-where `tenant_id` points at their row, plus requests they reported via
-`reported_by = auth.uid()`. INSERT: tenant can insert with their own
-auth.uid() as `reported_by` + their tenant_id (or NULL) + their own org,
-but not with mismatched values on any of those three. Pattern combines
-Suite 3 P3 (maintenance_requests_select cross-org) with §8.1's
-defense-in-depth shape (`organization_id` pin). Deferred because the
-INSERT defense-in-depth pattern is structurally identical to §8.1's
-fixes for vendor writes (Suite 5 C3–C8) with the predicate adjusted.
+Implemented in `supabase/tests/rls_phase3_maintenance_tenant_self.sql`.
+Verifies the `maintenance_requests_select` / `_insert` tenant-self
+branches from migration `20260526000100`. SELECT: a tenant sees
+requests where `tenant_id` points at their row (even when staff
+created the request on their behalf), plus requests they reported via
+`reported_by = auth.uid()`. INSERT: a tenant can insert with their
+own auth.uid() as `reported_by`, their own org, and their tenant_id
+(or NULL) — and is blocked when any of those three conditions fails.
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| Q1 | Org A PROPERTY_MANAGER | `select` `maintenance_requests` | ✅ 2 rows (R1 + R2; not R3) |
+| Q2 | tenant T1 (reporter of R1) | `select` `maintenance_requests` | ✅ 1 row (R1 via reported_by branch) |
+| Q3 | tenant T2 (R2 staff-created on their behalf) | `select` `maintenance_requests` | ✅ 1 row (R2 via tenant-by-tenant_id branch) |
+| Q4 | tenant T1 | `select` request R2 (T2's) | ✅ **0 rows** |
+| Q5 | Org B PROPERTY_MANAGER | `select` `maintenance_requests` | ✅ 1 row (R3 only) |
+| Q6 | tenant T1 | `select` request R3 (Org B) | ✅ **0 rows** |
+| Q7 | tenant T1 | `insert` with own org + tenant_id + reported_by | ✅ allowed; row count + 1 |
+| Q8 | tenant T1 | `insert` with `reported_by` = T2's uid | ✅ **rejected** (forgery guard) |
+| Q9 | tenant T1 | `insert` with cross-org `organization_id` | ✅ **rejected** (defense-in-depth) |
+| Q10 | tenant T1 | `insert` with `tenant_id` = T2.id | ✅ **rejected** (defense-in-depth) |
 
 ## 4k. Phase 3 Suite 12 — messages immutability + sender_role gating
 
@@ -280,6 +292,7 @@ npx tsx scripts/run-sql.ts supabase/tests/rls_phase2_blockers_closed.sql
 npx tsx scripts/run-sql.ts supabase/tests/users_select_staff_gate.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_leases_tenant_self.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_accept_tenant_invite.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_maintenance_tenant_self.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_messages_immutable.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
@@ -305,3 +318,4 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 15 / 15, 0 errored | `rls_phase3_accept_tenant_invite.sql` — Suite 8 — A1-A8 (acceptance RPC) |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 14 / 14, 0 errored | `rls_phase3_messages_immutable.sql` — Suite 12 — M1-M14 (immutability + sender_role gating) |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 7 / 7, 0 errored | `rls_phase3_leases_tenant_self.sql` — Suite 7 — L1-L7 (leases tenant-self + manager-only write) |
+| 2026-05-23 | `scripts/run-sql.ts` (pg) | 10 / 10, 0 errored | `rls_phase3_maintenance_tenant_self.sql` — Suite 11 — Q1-Q10 (maintenance tenant-self SELECT + INSERT defense-in-depth) |
