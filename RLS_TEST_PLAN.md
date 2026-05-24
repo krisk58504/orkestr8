@@ -5,7 +5,18 @@
 > work orders) 23/23 (2026-05-19), user-columns pin (SECURITY_REVIEW.md
 > §8.4 fix) 10/10 (2026-05-19), Phase 2 §8.1/§8.2/§8.3 closure 25/25
 > (2026-05-19), and users_select staff gate (SECURITY_REVIEW.md §7 fix)
-> 8/8 (2026-05-19); all passed, 0 errored. Total 84 assertions across 6 suites.**
+> 8/8 (2026-05-19). Phase 3 partial: accept_tenant_invite RPC (Suite 8)
+> 15/15 (2026-05-23), messages immutability (Suite 12) 14/14 (2026-05-23).
+> All 113 executed assertions pass; 0 errored.**
+>
+> **Phase 3 coverage gap:** four additional suites (7, 9, 10, 11) covering
+> leases tenant-self, tenant_invites lifecycle, units/properties tenant-self
+> + lease-mediated branches, and tenant-self maintenance INSERT/SELECT
+> branches are listed below but **not yet authored**. Each mirrors patterns
+> covered by existing suites — see SECURITY_REVIEW.md §11.6 for per-suite
+> justification and the order in which they should be authored before
+> Phase 4 ships any new portal RLS surface.
+>
 > Run against the dev database over the Session pooler connection. Human RLS
 > sign-off remains outstanding — see SECURITY_REVIEW.md.
 
@@ -152,6 +163,103 @@ Org B with 1 staff (OWNER) for cross-org regression.
 | U7 | OWNER@A | `select … where organization_id = Org B` | ✅ 0 rows (cross-org) |
 | U8 | anon | `select * from users` | ✅ 0 rows / denied |
 
+## 4f. Phase 3 Suite 7 — leases tenant-self  *(DEFERRED — not yet authored)*
+
+Would verify the `leases_select` tenant-self branch from migration
+`20260521000100`: a tenant linked via `tenants.lease_id` can SELECT that
+lease row; cannot SELECT other org leases; cannot SELECT leases that
+exist in their org but reference a different tenant; cannot UPDATE or
+DELETE any lease. Pattern matches Suite 3's `*_select` tenant-scoping
+shape (the staff branches are identical org-scoped). Deferred because
+the policy body is structurally identical to `tenants_select` (already
+covered by Suite 1 #7/#7b) and `maintenance_requests_select` shape,
+with the EXISTS subquery substituted on the appropriate join column.
+
+## 4g. Phase 3 Suite 8 — accept_tenant_invite RPC
+
+Implemented in `supabase/tests/rls_phase3_accept_tenant_invite.sql`.
+Verifies the SECURITY DEFINER RPC from migration `20260524000200`: the
+four classified error codes (`not_found` / `already_accepted` /
+`revoked` / `expired`) return without state mutation; successful
+acceptance atomically updates all four target tables
+(`tenants.user_id`, `tenant_invites.accepted_at/by`,
+`users.organization_id`, `user_roles` insert); the function is
+SECURITY DEFINER (`pg_proc.prosecdef`); EXECUTE is granted to
+`authenticated` + `service_role` and revoked from `public`/`anon`;
+`token_hash` matching is exact (off-by-one returns `not_found`).
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| A1 | acceptor (auth) | call with bogus token_hash | ✅ ok=false, code=not_found |
+| A2 | acceptor (auth) | call against already-accepted invite | ✅ ok=false, code=already_accepted (no state mutation) |
+| A3 | acceptor (auth) | call against revoked invite | ✅ ok=false, code=revoked (no state mutation) |
+| A4 | acceptor (auth) | call against expired invite | ✅ ok=false, code=expired (no state mutation) |
+| A5 | acceptor (auth) | call against pending invite | ✅ ok=true; tenants.user_id / tenant_invites.accepted_at / users.organization_id / user_roles all updated |
+| A6 | (privileged) | `pg_proc.prosecdef` for accept_tenant_invite | ✅ true |
+| A7 | (privileged) | `routine_privileges` for accept_tenant_invite | ✅ no PUBLIC/anon; EXECUTE to authenticated + service_role |
+| A8 | acceptor (auth) | call with token_hash off-by-one from real | ✅ ok=false, code=not_found; INV1 unchanged |
+
+## 4h. Phase 3 Suite 9 — tenant_invites lifecycle  *(DEFERRED — not yet authored)*
+
+Would verify the `tenant_invites_select` / `tenant_invites_write` policies
+from migration `20260522000100` (`can_write_tenants()` gate on both
+branches), the mutual-exclusion check constraint
+(`accepted_at IS NULL OR revoked_at IS NULL`), and the FK cascade on
+`organizations`/`tenants` delete. Pattern mirrors Suite 3 RW1–RW6 (staff
+INSERT gated on role) and the existing tenants_write tests. Deferred —
+the policy bodies are structurally identical to `tenants_write` (Suite 2
+R2/R3) with the table name swapped.
+
+## 4i. Phase 3 Suite 10 — tenant-self units / properties + lease-mediated  *(DEFERRED — not yet authored)*
+
+Would verify the `units_select` / `properties_select` tenant-self
+branches from migrations `20260524000100` (direct via `tenants.unit_id`)
+and `20260525000100` (lease-mediated via `tenants.lease_id →
+leases.unit_id`). Four scenarios per table: tenant with direct unit_id
+populated; tenant with lease_id populated but unit_id null; tenant with
+both populated (both branches admit); tenant with neither (zero rows).
+Pattern matches Suite 1 #1/#2 cross-org test against a different
+predicate. Deferred — direct branches are structurally identical to
+`tenants_select` and the lease-mediated branch is structurally identical
+to `leases_select` (both already covered for their own table).
+
+## 4j. Phase 3 Suite 11 — tenant-self maintenance INSERT/SELECT  *(DEFERRED — not yet authored)*
+
+Would verify the `maintenance_requests_select` / `_insert` tenant-self
+branches from migration `20260526000100`. SELECT: tenant sees requests
+where `tenant_id` points at their row, plus requests they reported via
+`reported_by = auth.uid()`. INSERT: tenant can insert with their own
+auth.uid() as `reported_by` + their tenant_id (or NULL) + their own org,
+but not with mismatched values on any of those three. Pattern combines
+Suite 3 P3 (maintenance_requests_select cross-org) with §8.1's
+defense-in-depth shape (`organization_id` pin). Deferred because the
+INSERT defense-in-depth pattern is structurally identical to §8.1's
+fixes for vendor writes (Suite 5 C3–C8) with the predicate adjusted.
+
+## 4k. Phase 3 Suite 12 — messages immutability + sender_role gating
+
+Implemented in `supabase/tests/rls_phase3_messages_immutable.sql`.
+Verifies the `messages_select` / `messages_insert` policies from
+migration `20260527000100` plus the table's IMMUTABILITY (no UPDATE,
+no DELETE policy ⇒ RLS denies all rows for those operations).
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| M1 | Org A staff PM | `select` Org A messages | ✅ 1 row (seed message) |
+| M2 | Org A MAINTENANCE_TECH | `select` Org A messages | ✅ 1 row — any is_org_staff reads |
+| M3 | tenant T1 (Org A) | `select` own conversation | ✅ 1 row |
+| M4 | tenant T2 (Org A, diff conv) | `select` T1's conv | ✅ **0 rows** |
+| M5 | Org B PM (cross-org) | `select` Org A messages | ✅ **0 rows** |
+| M6 | Org A staff PM | `insert` sender_role=staff into T1 conv | ✅ allowed |
+| M7 | MAINTENANCE_TECH | `insert` sender_role=staff | ✅ **rejected** (no can_write_tenants) |
+| M8 | tenant T1 | `insert` sender_role=tenant into own conv | ✅ allowed |
+| M9 | tenant T1 | `insert` sender_role=tenant into T2 conv | ✅ **rejected** (defense-in-depth) |
+| M10 | tenant T1 | `insert` sender_role=staff (impersonate) | ✅ **rejected** |
+| M11 | staff PM | `insert` with sender_id ≠ auth.uid() | ✅ **rejected** (sender_id pin) |
+| M12 | tenant T1 | `insert` with mismatched organization_id | ✅ **rejected** (defense-in-depth) |
+| M13 | staff PM | `update` messages | ✅ **0 rows** (no policy); body unchanged |
+| M14 | staff PM | `delete` messages | ✅ **0 rows** (no policy); row remains |
+
 ## 5. How to run
 
 ```bash
@@ -162,6 +270,8 @@ npx tsx scripts/run-sql.ts supabase/tests/rls_phase2.sql
 npx tsx scripts/run-sql.ts supabase/tests/user_columns_pin.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase2_blockers_closed.sql
 npx tsx scripts/run-sql.ts supabase/tests/users_select_staff_gate.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_accept_tenant_invite.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_messages_immutable.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -183,3 +293,5 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 13 / 13, 5 / 5, 23 / 23, 10 / 10, 0 errored | full re-run after §8.1/§8.2/§8.3 migrations — no regressions in prior suites |
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 8 / 8, 0 errored | `users_select_staff_gate.sql` — U1-U8 (§7 fix) |
 | 2026-05-19 | `scripts/run-sql.ts` (pg) | 13 / 13, 5 / 5, 23 / 23, 10 / 10, 25 / 25, 0 errored | full re-run after §7 migration — no regressions in prior suites |
+| 2026-05-23 | `scripts/run-sql.ts` (pg) | 15 / 15, 0 errored | `rls_phase3_accept_tenant_invite.sql` — Suite 8 — A1-A8 (acceptance RPC) |
+| 2026-05-23 | `scripts/run-sql.ts` (pg) | 14 / 14, 0 errored | `rls_phase3_messages_immutable.sql` — Suite 12 — M1-M14 (immutability + sender_role gating) |

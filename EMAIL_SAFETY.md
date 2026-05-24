@@ -103,3 +103,80 @@ Recorded 2026-05-19 as a precondition of the test-mode wiring:
 - [ ] `EMAIL_MODE=production` set only in the production environment.
 - [ ] Verified: with `EMAIL_MODE=test`, no mail reaches non-allowlisted
       addresses.
+
+## 7. Phase 3 gate-tightening — recipient normalization
+
+Two correctness fixes shipped during Phase 3 walk testing. Both **tighten
+existing gates** rather than introduce new ones; neither relaxes the test-
+mode posture from §4 or the blockers in §5/§6.
+
+### 7.1 Resend handoff case-normalizes the recipient (`37582a6`)
+
+Resend's sandbox sender (`onboarding@resend.dev`) requires the recipient
+address to match the verified account email **case-sensitively** — even
+though RFC 5321 treats the local-part as case-insensitive. Discovered
+during slice 6b walk testing: a tenant email stored as
+`KrisK58504@gmail.com` in the DB was rejected by Resend because the verified
+account address is `krisk58504@gmail.com`.
+
+`src/lib/email/send.ts:deliverViaResend()` now applies the existing
+`normalizeAddress()` helper (`trim().toLowerCase()`) to `email.to` immediately
+before handing it to Resend:
+
+```ts
+const { data, error } = await resend.emails.send({
+  from: getFromAddress(),
+  to: normalizeAddress(email.to),    // ← normalize only at the provider boundary
+  ...
+});
+```
+
+Trust-boundary note: the original recipient string remains on
+`email.to`, which is what `logEmailAttempt` records in
+`email_log.to_address`. Audit queries continue to match against the
+user-visible form (whatever the staff member typed), while Resend
+sees the canonical lowercase form.
+
+### 7.2 Allowlist comparison strips plus-tag aliases (`d5b5e2c`)
+
+Gmail (and most providers) route every plus-aliased form of an address to
+the same inbox: `krisk58504+tenant1@gmail.com`, `krisk58504+test@gmail.com`,
+and the bare `krisk58504@gmail.com` all deliver to the same person.
+`isRecipientAllowed()` previously did strict string equality after
+`normalizeAddress()`, so a plus-aliased recipient failed the
+`APPROVED_TEST_EMAILS` allowlist even when the base address was listed —
+blocking legitimate test fixtures.
+
+`src/lib/email/config.ts` adds a private `stripPlusTag(normalized)` helper
+that truncates the local-part at the first `+`. `isRecipientAllowed()`
+applies it to BOTH the recipient and each allowlist entry before
+comparing:
+
+```ts
+export function isRecipientAllowed(address: string): boolean {
+  if (getEmailMode() === "production") return true;
+  const recipientBase = stripPlusTag(normalizeAddress(address));
+  return getApprovedTestEmails()
+    .map(stripPlusTag)
+    .includes(recipientBase);
+}
+```
+
+`normalizeAddress()` itself is unchanged — the Resend handoff in §7.1
+still sends the plus-aliased address verbatim so the provider routes it
+correctly. Only the allowlist *comparison* normalizes further.
+
+Caveat for future allowlist changes: this trade is only safe when each
+allowlist entry is an individual's inbox. If an allowlist entry ever points
+at a shared role-account that multiple humans access, plus-tag stripping
+would let any plus-aliased variant of that address pass the gate.
+
+### 7.3 What did NOT change
+
+- The four gates of `sendEmail()` (`config`/`send`/`log`/§4) are unchanged
+  in order or behavior. §7.1 is a transformation at the Resend handoff
+  AFTER all four gates have admitted the send; §7.2 is a comparison
+  refinement INSIDE Gate 2.
+- §5/§6 blockers and verifications stand: Gate 3's test-mode-only guard
+  still blocks every production-mode send.
+- The audit trail in `email_log` is unchanged in shape.
