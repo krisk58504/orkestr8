@@ -13,6 +13,7 @@ import type {
   OrganizationStatus,
   PropertyType,
   TenantInviteStatus,
+  TenantMaintenanceStatus,
   TenantStatus,
   UnitStatus,
   UserRole,
@@ -237,6 +238,40 @@ export const MAINTENANCE_STATUS_META: Record<
   completed: { label: "Completed", tone: "success" },
   cancelled: { label: "Cancelled", tone: "neutral" },
 };
+
+/**
+ * Tenant-facing maintenance status meta. The portal collapses the 7 internal
+ * statuses into 5 user-friendly states — triaged and on_hold are internal
+ * staff concepts and don't surface to the tenant.
+ */
+export const TENANT_MAINTENANCE_STATUS_META: Record<
+  TenantMaintenanceStatus,
+  { label: string; tone: Tone }
+> = {
+  submitted: { label: "Submitted", tone: "info" },
+  scheduled: { label: "Scheduled", tone: "info" },
+  in_progress: { label: "In progress", tone: "warning" },
+  completed: { label: "Completed", tone: "success" },
+  cancelled: { label: "Cancelled", tone: "neutral" },
+};
+
+/** Collapse an internal maintenance_status to its tenant-facing equivalent. */
+export function toTenantMaintenanceStatus(
+  s: MaintenanceStatus,
+): TenantMaintenanceStatus {
+  switch (s) {
+    case "triaged":
+      return "submitted";
+    case "on_hold":
+      return "in_progress";
+    case "submitted":
+    case "scheduled":
+    case "in_progress":
+    case "completed":
+    case "cancelled":
+      return s;
+  }
+}
 
 export const MAINTENANCE_CATEGORY_LABELS: Record<MaintenanceCategory, string> = {
   plumbing: "Plumbing",

@@ -54,6 +54,18 @@ export type TenantInviteStatus =
   | "expired"
   | "revoked"
   | "none";
+
+/**
+ * Tenant-facing maintenance status — not a DB enum. Collapses the 7 internal
+ * maintenance_status values into 5 user-friendly states for the tenant
+ * portal. See toTenantMaintenanceStatus() in lib/constants.ts.
+ */
+export type TenantMaintenanceStatus =
+  | "submitted"
+  | "scheduled"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
 export type MaintenanceStatus = Enums<"maintenance_status">;
 export type MaintenancePriority = Enums<"maintenance_priority">;
 export type MaintenanceCategory = Enums<"maintenance_category">;
