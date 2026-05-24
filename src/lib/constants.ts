@@ -15,6 +15,8 @@ import type {
   MaintenanceStatus,
   OrganizationStatus,
   PropertyType,
+  RentChargeStatus,
+  RentChargeType,
   TenantInviteStatus,
   TenantMaintenanceStatus,
   TenantStatus,
@@ -217,6 +219,29 @@ export const APPLICATION_STATUS_META: Record<
   approved: { label: "Approved", tone: "success" },
   rejected: { label: "Rejected", tone: "warning" },
   withdrawn: { label: "Withdrawn", tone: "neutral" },
+};
+
+/** Phase 5 (slice 10a): rent charge lifecycle. status='voided' excluded from aging per §0.5 decision 10. */
+export const RENT_CHARGE_STATUS_META: Record<
+  RentChargeStatus,
+  { label: string; tone: Tone }
+> = {
+  open: { label: "Open", tone: "info" },
+  paid: { label: "Paid", tone: "success" },
+  partial: { label: "Partial", tone: "warning" },
+  voided: { label: "Voided", tone: "neutral" },
+};
+
+/** Phase 5 (slice 10a): charge category. 'credit' absorbs overpayments per §0.5 decision 2. */
+export const RENT_CHARGE_TYPE_META: Record<
+  RentChargeType,
+  { label: string; tone: Tone }
+> = {
+  rent: { label: "Rent", tone: "info" },
+  deposit: { label: "Deposit", tone: "neutral" },
+  fee: { label: "Fee", tone: "warning" },
+  credit: { label: "Credit", tone: "success" },
+  other: { label: "Other", tone: "neutral" },
 };
 
 export const BUILDING_STATUS_META: Record<

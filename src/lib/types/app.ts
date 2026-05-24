@@ -40,6 +40,7 @@ export type TenantConversationState = Tables<"tenant_conversation_state">;
 export type Lead = Tables<"leads">;
 export type Tour = Tables<"tours">;
 export type Application = Tables<"applications">;
+export type RentCharge = Tables<"rent_charges">;
 
 export type UserRole = Enums<"user_role">;
 export type AiMode = Enums<"ai_mode">;
@@ -85,6 +86,8 @@ export type LeadStatus = Enums<"lead_status">;
 export type LeadSource = Enums<"lead_source">;
 export type TourStatus = Enums<"tour_status">;
 export type ApplicationStatus = Enums<"application_status">;
+export type RentChargeType = Enums<"rent_charge_type">;
+export type RentChargeStatus = Enums<"rent_charge_status">;
 
 /** Resolved identity for the signed-in user, loaded once per request. */
 export type SessionContext = {

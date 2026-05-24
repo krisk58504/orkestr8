@@ -882,6 +882,50 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["applications"]["Insert"]>;
         Relationships: [];
       };
+      rent_charges: {
+        Row: {
+          id: string;
+          organization_id: string;
+          lease_id: string;
+          tenant_id: string;
+          unit_id: string;
+          charge_type: Database["public"]["Enums"]["rent_charge_type"];
+          amount_due: number;
+          due_date: string;
+          period_start: string | null;
+          period_end: string | null;
+          status: Database["public"]["Enums"]["rent_charge_status"];
+          description: string | null;
+          notes: string | null;
+          voided_at: string | null;
+          voided_by: string | null;
+          void_reason: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          lease_id: string;
+          tenant_id: string;
+          unit_id: string;
+          charge_type?: Database["public"]["Enums"]["rent_charge_type"];
+          amount_due: number;
+          due_date: string;
+          period_start?: string | null;
+          period_end?: string | null;
+          status?: Database["public"]["Enums"]["rent_charge_status"];
+          description?: string | null;
+          notes?: string | null;
+          voided_at?: string | null;
+          voided_by?: string | null;
+          void_reason?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["rent_charges"]["Insert"]>;
+        Relationships: [];
+      };
       messages: {
         Row: {
           id: string;
@@ -1068,6 +1112,8 @@ export type Database = {
         | "approved"
         | "rejected"
         | "withdrawn";
+      rent_charge_type: "rent" | "deposit" | "fee" | "credit" | "other";
+      rent_charge_status: "open" | "paid" | "partial" | "voided";
     };
     CompositeTypes: { [_ in never]: never };
   };
