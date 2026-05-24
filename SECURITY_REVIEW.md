@@ -872,3 +872,631 @@ By signing below, the reviewer attests that:
 | Reviewer | Date | Outcome |
 |---|---|---|
 | Kris Kelley | 2026-05-23 | Certified — Gate 1 approved |
+
+## 12. Sign-off — Phase 4 close & Gate 1 re-certification
+
+### 12.0 Scope and snapshot
+
+- Branch: `phase-2-maintenance` at HEAD `3010b58` (2026-05-24).
+- Phase 4 migrations covered: **5 files**, `20260528000100` through
+  `20260531000100`. The full migration set on the branch is now 35
+  files; §11 covered files 1-31 (Phases 1-3); §12 covers files 32-35
+  plus the slice 9a follow-up at file 32-bis (the cross-org FK pin
+  closure, sequenced `20260528000200`).
+- Application code covered: `src/` at the named commit, plus
+  `PHASE_4_PLAN.md` as the Phase 4 source-of-record (closed Step 0
+  decisions in §0.5 are referenced throughout below).
+- Reference: §11 (above) is the source-of-record for all surface
+  established before Phase 4. §12 confirms that §11 findings remain
+  accurate at the snapshot above, then inventories the **five Phase 4
+  additions** that post-date §11's sign-off.
+- Cumulative RLS test coverage: **181 assertions across 13 suites**
+  (150 carried forward from §11.0 + 31 new in Phase 4 Suite 13). All
+  181 passing as of 2026-05-24; 0 errored. Phase 4 Suite 13 passed
+  **31/31 on first run** — see §12.7.
+- §12 closes Phase 4 per `PHASE_4_PLAN.md` §8 Step 6.
+
+### 12.1 Phase 4 RLS additions
+
+One sub-section per migration. USING and WITH CHECK clauses reproduced
+verbatim from the migration SQL, matching the depth of §11.1.
+Migration short-codes used:
+
+- **M4LD** = `20260528000100_phase4_leads.sql`
+- **M4LDP** = `20260528000200_phase4_leads_cross_org_pin.sql` (slice 9a
+  follow-up — the §8.1 propagation closure)
+- **M4T** = `20260529000100_phase4_tours.sql`
+- **M4A** = `20260530000100_phase4_applications.sql`
+- **M4C** = `20260531000100_phase4_lease_conversion.sql` (Conversion)
+
+#### 12.1.1 leads  *(RLS enabled — M4LD)*
+
+New enums `public.lead_status` (`new`, `contacted`, `qualified`,
+`tour_scheduled`, `applied`, `converted`, `disqualified`, `lost`) and
+`public.lead_source` (`website`, `referral`, `walkin`, `partner`,
+`other`). New table `public.leads (id, organization_id, status, source,
+first_name, last_name, email, phone, assigned_to, desired_property_id,
+desired_move_in, desired_bedrooms, desired_budget, notes, created_at,
+updated_at)` with FK cascade on `organizations`, `on delete set null`
+on `assigned_to` (→ `users`) and `desired_property_id` (→ `properties`).
+Four indexes (org / status / assigned_to / desired_property_id).
+`set_updated_at` trigger attached.
+
+**Narrow read+write posture** per `PHASE_4_PLAN.md` §0.5 decision 7.
+Both SELECT and WRITE gated on `can_write_tenants()` — `MAINTENANCE_TECH`
+is `is_org_staff()` but NOT `can_write_tenants()`, so reads AND writes
+deny for that role. This is the tighter posture vs Phase 3 messages
+(which split broad-read from narrow-write); chosen because lead /
+application records carry PII (monthly income, employment status,
+prior address, background-check consent — surfacing on applications in
+M4A but the table-wide read scope is locked here).
+
+- **leads_select** — SELECT, `authenticated` — M4LD
+  - USING: `((organization_id = public.current_user_org_id() and public.can_write_tenants()) or public.is_super_admin())`
+- **leads_insert** — INSERT, `authenticated` — M4LD *(superseded by M4LDP — see 12.1.2)*
+  - WITH CHECK *(original M4LD body)*: `((organization_id = public.current_user_org_id() and public.can_write_tenants()) or public.is_super_admin())`
+- **leads_update** — UPDATE, `authenticated` — M4LD *(superseded by M4LDP — see 12.1.2)*
+  - USING *(original M4LD body)*: same as `leads_insert` WITH CHECK
+  - WITH CHECK *(original M4LD body)*: same as `leads_insert` WITH CHECK
+- **leads_delete** — DELETE, `authenticated` — M4LD
+  - USING: `((organization_id = public.current_user_org_id() and public.can_write_tenants()) or public.is_super_admin())`
+
+#### 12.1.2 leads cross-org FK pin closure  *(M4LDP — slice 9a follow-up)*
+
+**The §8.1 propagation closure.** M4LD's `leads_insert` /
+`leads_update` policies pinned the row's own `organization_id` to
+`current_user_org_id()` but did NOT verify that `desired_property_id`
+and `assigned_to` (when non-null) reference rows in the SAME
+organization — the same vulnerability shape Phase 2 §8.1 closed for
+`vendor_invoices` / `vendor_assignments`. A manager in Org A could
+craft an insert with `organization_id = A` while supplying a
+`desired_property_id` pointing at an Org B property, or an
+`assigned_to` pointing at an Org B user. **Found and closed during
+slice 9b authoring** (commit `dccbf45`); shipped before any Phase 4
+sign-off so the gap never reached a certified Gate 1 surface.
+
+M4LDP drops and recreates `leads_insert` + `leads_update` with EXISTS
+subqueries against `properties` and `users`, both keyed on the target
+row's `organization_id` matching the lead's `organization_id`.
+`leads_select` and `leads_delete` are intentionally NOT touched (no
+write-time-trusted-input surface on those operations).
+
+- **leads_insert** — INSERT, `authenticated` — **current definition M4LDP**
+  - WITH CHECK: `((organization_id = public.current_user_org_id() and public.can_write_tenants() and (desired_property_id is null or exists (select 1 from public.properties p where p.id = leads.desired_property_id and p.organization_id = leads.organization_id)) and (assigned_to is null or exists (select 1 from public.users u where u.id = leads.assigned_to and u.organization_id = leads.organization_id))) or public.is_super_admin())`
+- **leads_update** — UPDATE, `authenticated` — **current definition M4LDP**
+  - USING: same predicate as `leads_insert` WITH CHECK (defense-in-depth:
+    a row that somehow already contains cross-org FKs is not admitted
+    for further mutation).
+  - WITH CHECK: same predicate.
+
+Suite 13 K7 + K8 verify the propagation: a PM inserting a lead with
+cross-org `desired_property_id` (K7) or cross-org `assigned_to` (K8) is
+rejected. K5 confirms the same-org positive control still admits.
+
+#### 12.1.3 tours  *(RLS enabled — M4T)*
+
+New enum `public.tour_status` (`scheduled`, `completed`, `no_show`,
+`cancelled`). New table `public.tours (id, organization_id, lead_id,
+unit_id, agent_id, scheduled_at, status, outcome_notes, created_at,
+updated_at)` with FK cascade on `organizations`/`leads`,
+`on delete set null` on `unit_id` and `agent_id`. Four indexes
+(org / lead / agent / scheduled_at). `set_updated_at` trigger attached.
+
+Same narrow read+write posture as leads. **Cross-org FK pins built in
+from the start** (§8.1 pattern applied proactively rather than as a
+follow-up — slice 9b learned from the slice 9a gap). `tours_insert`
+and `tours_update` both verify `lead_id` (required, must match org),
+`unit_id` (when non-null), and `agent_id` (when non-null).
+
+- **tours_select** — SELECT, `authenticated` — M4T
+  - USING: `((organization_id = public.current_user_org_id() and public.can_write_tenants()) or public.is_super_admin())`
+- **tours_insert** — INSERT, `authenticated` — M4T
+  - WITH CHECK: `((organization_id = public.current_user_org_id() and public.can_write_tenants() and exists (select 1 from public.leads l where l.id = tours.lead_id and l.organization_id = tours.organization_id) and (unit_id is null or exists (select 1 from public.units u where u.id = tours.unit_id and u.organization_id = tours.organization_id)) and (agent_id is null or exists (select 1 from public.users usr where usr.id = tours.agent_id and usr.organization_id = tours.organization_id))) or public.is_super_admin())`
+- **tours_update** — UPDATE, `authenticated` — M4T
+  - USING: same predicate as `tours_insert` WITH CHECK.
+  - WITH CHECK: same predicate.
+- **tours_delete** — DELETE, `authenticated` — M4T
+  - USING: `((organization_id = public.current_user_org_id() and public.can_write_tenants()) or public.is_super_admin())`
+
+Suite 13 T7 / T8 / T9 verify the three FK pins independently.
+
+#### 12.1.4 applications  *(RLS enabled — M4A)*
+
+New enum `public.application_status` (`draft`, `submitted`,
+`under_review`, `approved`, `rejected`, `withdrawn`). New table
+`public.applications (id, organization_id, lead_id, unit_id, status,
+applicant_first_name, applicant_last_name, applicant_email,
+applicant_phone, desired_move_in, monthly_income, employment_status,
+prior_address, background_check_consent, submitted_at, decided_at,
+decided_by, decision_notes, created_at, updated_at)`. FK cascade on
+`organizations`, `on delete set null` on `lead_id` and `decided_by`,
+`on delete restrict` on `unit_id` (applications outlive lead rows;
+unit deletion is blocked while a referencing application exists).
+Four indexes (org / lead / unit / status). `set_updated_at` trigger
+attached.
+
+Same narrow read+write posture as leads / tours. Cross-org FK pins
+built in from the start on `unit_id` (required), `lead_id` (when
+non-null), `decided_by` (when non-null).
+
+**Status transitions are NOT enforced by RLS** per `PHASE_4_PLAN.md`
+§7 risk 4. The transition map (`draft → submitted | withdrawn`;
+`submitted → under_review | withdrawn | rejected`; etc.) lives in the
+`updateApplication` server action only (`isAllowedTransition` helper
+in `src/lib/validations/application.ts`). No RESTRICTIVE policy on
+this table. Suite 13 A10 verifies this absence — a direct UPDATE that
+would violate the transition map (`draft → approved`) succeeds at the
+RLS layer.
+
+- **applications_select** — SELECT, `authenticated` — M4A
+  - USING: `((organization_id = public.current_user_org_id() and public.can_write_tenants()) or public.is_super_admin())`
+- **applications_insert** — INSERT, `authenticated` — M4A
+  - WITH CHECK: `((organization_id = public.current_user_org_id() and public.can_write_tenants() and exists (select 1 from public.units u where u.id = applications.unit_id and u.organization_id = applications.organization_id) and (lead_id is null or exists (select 1 from public.leads l where l.id = applications.lead_id and l.organization_id = applications.organization_id)) and (decided_by is null or exists (select 1 from public.users usr where usr.id = applications.decided_by and usr.organization_id = applications.organization_id))) or public.is_super_admin())`
+- **applications_update** — UPDATE, `authenticated` — M4A
+  - USING: same predicate as `applications_insert` WITH CHECK.
+  - WITH CHECK: same predicate.
+- **applications_delete** — DELETE, `authenticated` — M4A
+  - USING: `((organization_id = public.current_user_org_id() and public.can_write_tenants()) or public.is_super_admin())`
+
+Suite 13 A7 / A8 / A9 verify the three FK pins independently.
+
+#### 12.1.5 tenants.source_application_id  *(additive column — M4C)*
+
+The only Phase 4 modification to an **existing** table.
+
+```sql
+alter table public.tenants
+  add column if not exists source_application_id uuid
+    references public.applications(id) on delete set null;
+create index if not exists tenants_source_application_id_idx
+  on public.tenants(source_application_id);
+```
+
+Nullable so existing tenant rows (every row predating Phase 4) keep
+`source_application_id` NULL forever. The `convertApplicationToLease`
+server action sets it; nothing else writes it. The existing
+`tenants_select` / `tenants_write` policies are unchanged — the new
+column inherits the tenants table's RLS posture (`can_write_tenants()`
+gate, same as the rest of Phase 4's leasing surface).
+
+Provenance only — query `tenants.source_application_id` to find the
+tenant created from a given application. The same reverse lookup
+drives the `ApplicationRow.converted_tenant_id` enrichment in
+`src/lib/data/applications.ts` that powers the "Converted" affordance
+on the application detail page.
+
+Suite 13 X4 verifies the column accepts a valid FK insert.
+
+### 12.2 Modified Phase 3 surface — `create_lease_with_tenants` RPC widening
+
+**This subsection is the Phase-4-unique insertion §11 did not need.**
+
+The Phase 3 SECURITY DEFINER RPC `create_lease_with_tenants` (M3LR /
+`20260521000200_phase3_create_lease_rpc.sql`), inventoried in §11.1.3
+and certified under §11.9 with the narrower `is_org_manager()`
+authority cohort, is **modified in M4C**. The change is a one-line swap
+inside the function body's authority guard; every other property of
+the function — signature, return type, SECURITY DEFINER attribute,
+lease INSERT + tenants UPDATE body, REVOKE/GRANT block — is preserved
+byte-for-byte.
+
+**Diff (the only behavior change):**
+
+```sql
+-- Before (M3LR — Phase 3, certified under §11.9):
+if not (
+  (public.is_org_manager() and public.current_user_org_id() = p_organization_id)
+  or public.is_super_admin()
+) then raise exception '...' using errcode = '42501'; end if;
+
+-- After (M4C — Phase 4, certification asked in §12.10):
+if not (
+  (public.can_write_tenants() and public.current_user_org_id() = p_organization_id)
+  or public.is_super_admin()
+) then raise exception '...' using errcode = '42501'; end if;
+```
+
+Full body in M4C; the diff above is the entirety of the semantic
+change. The `auth.uid() IS NULL → 28000` pre-check is retained — the
+function still requires an authenticated caller.
+
+**Rationale.** Per `PHASE_4_PLAN.md` §0.5 decision 3 (locked
+2026-05-23), `convertApplicationToLease` (slice 9d) must be callable
+by a `LEASING_AGENT`. The LA owns the leasing pipeline end-to-end —
+forcing them to escalate to a manager every time an approved
+application converts would create a real workflow friction without a
+matching security benefit. Widening the RPC's internal authority guard
+to `can_write_tenants()` admits the LA cohort directly. The
+alternative considered (have `convertApplicationToLease` call the RPC
+via the admin client to bypass the in-body check) was rejected as
+worse — it would bypass an explicit safety check rather than redefine
+it.
+
+**Reviewer attestation language.** This RPC was certified under §11
+sign-off with the narrower manager-only authority. §12 re-certifies it
+under the widened `can_write_tenants()` authority cohort, which
+includes management roles (`SUPER_ADMIN`, `OWNER`, `REGIONAL_MANAGER`,
+`PROPERTY_MANAGER`) plus `LEASING_AGENT`. The change is driven by
+`PHASE_4_PLAN.md` §0.5 decision 3 to enable LEASING_AGENT to call the
+RPC from `convertApplicationToLease`. The RPC remains SECURITY
+DEFINER; the authentication requirement (`auth.uid()` not null) is
+unchanged; the cross-org tenant pin in the tenants UPDATE
+(`organization_id = p_organization_id`) is unchanged.
+
+**Test coverage.** Suite 13 X1 / X2 / X3 verify the widening behaves
+as documented:
+
+- X1 — `LEASING_AGENT` calls the RPC and it succeeds; the resulting
+  lease lands in the caller's org (two-step verification per the audit
+  proposal). Pre-Phase-4 this would have raised SQLSTATE 42501.
+- X2 — `PROPERTY_MANAGER` calls the RPC and it still succeeds
+  (regression — widening did not lock out managers).
+- X3 — `MAINTENANCE_TECH` calls the RPC and is rejected with SQLSTATE
+  42501 from the explicit guard. The widening was to
+  `can_write_tenants()`, NOT to `is_org_staff()`; MT remains outside
+  the cohort.
+
+**Pre-existing `/leases` create surface is unaffected.** The Phase 3
+`createLease` action in `src/app/(app)/leases/actions.ts:25` gates at
+`isManager()` in the **action layer** BEFORE invoking the RPC. The
+widening of the RPC's in-body check does NOT silently widen the
+`/leases` page surface; that surface keeps its narrower
+`isManager()` action-layer gate. The new authority cohort is only
+exercised via `convertApplicationToLease`. Reviewer should confirm
+during sign-off that no other caller of the RPC has been added that
+would benefit from the wider cohort without an action-layer gate of
+its own.
+
+### 12.3 New service-role bypass paths
+
+**Phase 4 added zero new service-role bypass paths.** The B.x
+inventory from §11.2 stands unchanged at 12 rows (B.1–B.9 from the
+audit packet + B.10–B.12 from Phase 3's invite-acceptance flow). No
+Phase 4 server action uses the admin client.
+
+In particular, `convertApplicationToLease` (slice 9d, the integration
+action that ties applications → tenants + leases) uses the
+**cookie-bound client throughout**:
+
+- The pre-flight reads (application by id, existing-conversion check,
+  unit lookup) all run through `createClient()` and are governed by
+  RLS.
+- The tenant INSERT runs through the cookie-bound client and is
+  governed by `tenants_write` (which gates on `can_write_tenants()`).
+- The `create_lease_with_tenants` RPC call runs through the
+  cookie-bound client; the RPC is granted EXECUTE to `authenticated`
+  and the in-body guard re-verifies authority (per §12.2).
+- The soft-write lead status update runs through the cookie-bound
+  client and is governed by `leads_update`.
+
+The only admin-client usage in the action is the existing
+`logAudit()` chokepoint (audit-log inserts go through the
+service-role client per the established §11 / packet Part B pattern;
+this is not a new bypass path — it is the same one inventoried as
+B.6 in the audit packet).
+
+### 12.4 Acceptance of audit-packet findings (Parts A-F)
+
+§11.3 walked through Parts A-F at the Phase 3 snapshot. §12.4
+confirms each Part is still accurate at the Phase 4 snapshot and notes
+the deltas:
+
+- **A.1 helper functions**: confirmed live. **No Phase 4 migration
+  added or modified a helper.** `can_write_tenants()`,
+  `current_user_org_id()`, `is_org_staff()`, `is_org_manager()`,
+  `is_super_admin()` all date to Phase 1 / Phase 2 and continue in
+  force. The Phase 4 narrow-read posture (§12.1.1) consumes
+  `can_write_tenants()` as-is.
+- **A.2 triggers**: confirmed live. **Three new `set_updated_at`
+  attachments** — one each on `leads` (M4LD), `tours` (M4T),
+  `applications` (M4A). All three attach the existing
+  `public.set_updated_at()` function from M0518000600 — no new
+  trigger function this phase.
+- **A.3 / A.4 policies**: confirmed live. **Phase 4 additions** — 12
+  new policies across 3 tables (4 per table × 3 tables: leads, tours,
+  applications), plus 2 supersede-recreations from M4LDP
+  (`leads_insert`, `leads_update`). No supersede-recreations of any
+  pre-Phase-4 table's policies. The `tenants_select` /
+  `tenants_write` policies (M0700 / Phase 1) are unchanged — the
+  `source_application_id` additive column from M4C inherits the
+  existing posture (§12.1.5).
+- **A.5 storage posture**: unchanged. Phase 4 added no new storage
+  buckets and no new `storage.objects` policies (application document
+  uploads are deferred per §12.6 item 3).
+- **Part B (service-role bypass)**: extended in §12.3 — **with zero
+  new entries**. The summary table stays at 12 rows.
+- **Part C (audit-log writes)**: vocabulary expanded substantially.
+  New `entity_type` values: `lead`, `tour`, `application`. New
+  `action` values:
+  - Lead lifecycle: `lead.created`, `lead.updated` (carrying
+    `from_status`/`to_status` delta metadata when status changes),
+    `lead.deleted`.
+  - Tour lifecycle: `tour.scheduled`, `tour.updated` (delta
+    metadata), `tour.deleted`.
+  - Application lifecycle: `application.created`,
+    `application.updated` (delta metadata),
+    `application.deleted`, `application.approved`,
+    `application.rejected`, `application.converted`.
+  - Conversion-specific dual-vocabulary: the slice 9d
+    `convertApplicationToLease` action emits **three** audit
+    entries on success — `tenant.created` (existing vocabulary,
+    with `metadata.source = "application_conversion"` +
+    `application_id` + `lead_id`), `lease.created` (existing
+    vocabulary, same `metadata.source` tag + `application_id` +
+    `tenant_id` + `unit_id` + `monthly_rent` + `start_date`), and
+    `application.converted` (new vocabulary; `metadata.tenant_id`
+    + `metadata.lease_id`).
+  - Trust model unchanged: each caller resolves `organizationId`
+    and `actorId` from a session guard before calling `logAudit`.
+- **Part D (email module)**: gate count unchanged at 4. **No Phase 4
+  email vocabulary additions** — per `PHASE_4_PLAN.md` §0.5
+  decision 5 (manual invite on conversion) and decision 6 (no tour
+  confirmation emails). EMAIL_SAFETY.md is unchanged this phase
+  (see §12.8).
+- **Part E (AI logs)**: unchanged — no Phase 4 work touched the AI
+  triage path. Lead scoring / application auto-decisioning are
+  explicitly out of Phase 4 scope per `PHASE_4_PLAN.md` §1 (Phase 6
+  Automation engine).
+- **Part F.1 (closed items vs. migrations)**: all invariants still
+  hold; no Phase 4 migration weakens any §5/§6 invariant. The
+  `protect_user_columns` trigger remains load-bearing — Phase 4 did
+  not touch any user-linkage column.
+- **Part F.2 (RLS test assertions)**: now **181 passing** (was 150 at
+  §11 close). Phase 4 Suite 13 added 31 new assertions covering the
+  Phase 4 RLS surface end-to-end. Still 0 assertions targeting a
+  deleted/non-existent policy. See §12.7 for the test-plan delta.
+
+### 12.5 Phase 4 trust-model summary
+
+**Phase 4 introduced no novel security patterns.** Unlike Phase 3
+(which carried two novel patterns flagged in §11.4 — SECURITY DEFINER
+with anonymous grant; RLS-enforced immutability via policy absence),
+Phase 4 reuses only established patterns:
+
+- **Narrow read+write gated on `can_write_tenants()`** — established
+  by Phase 3 `tenant_invites` (§11.1.4); propagated to three new
+  tables (leads, tours, applications) per §0.5 decision 7.
+- **One-policy-per-operation shape** (separate select / insert /
+  update / delete) — established by Phase 3 M3X / M3I; continued in
+  Phase 4 for clearer `pg_policies` introspection vs. a single
+  `for all` policy.
+- **§8.1 cross-org FK pin pattern** — established by Phase 2 §8.1
+  closure (`vendor_invoices`, `vendor_assignments`); propagated to
+  all three new Phase 4 entity tables on all relevant FK columns:
+  - leads: `desired_property_id`, `assigned_to` (M4LDP — closed as a
+    follow-up after the slice 9a gap was caught)
+  - tours: `lead_id` (required), `unit_id`, `agent_id` (M4T — built
+    in from the start)
+  - applications: `unit_id` (required), `lead_id`, `decided_by`
+    (M4A — built in from the start)
+- **SECURITY DEFINER RPC with explicit in-body authority check** —
+  established by Phase 3 M3LR (`create_lease_with_tenants`);
+  modified in Phase 4 M4C (one-line authority widening per §12.2).
+  No new SECURITY DEFINER functions added.
+
+**Reviewer attention** for §12 is on **propagation correctness** of
+the §8.1 pattern (not pattern novelty). Suite 13 K7 / K8 / T7 / T8 /
+T9 / A7 / A8 / A9 — eight assertions, each isolating a single
+cross-org FK rejection — verify the propagation. The follow-up
+M4LDP migration (commit `dccbf45`) is the cautionary tale: a Phase 4
+table shipped without the §8.1 pins and the gap was caught during
+the next slice's audit. The pattern is now treated as a Phase 4
+default.
+
+### 12.6 Known limitations carried into Phase 5+
+
+Items deferred during Phase 4 slice authoring, acknowledged as
+known scope-bounded gaps rather than Gate 1 blockers:
+
+1. **`convertApplicationToLease` is not atomic across the
+   (tenant INSERT, RPC call) boundary.** If the RPC fails after the
+   tenant row is inserted, the tenant row remains as an orphan
+   (no `lease_id`, `source_application_id` set). Recovery is manual:
+   the LA deletes the orphan tenant via `/tenants` and retries the
+   conversion. Future hardening: wrap both writes in a single
+   SECURITY DEFINER RPC `create_tenant_and_lease_from_application()`
+   so they share one PL/pgSQL transaction. Documented inline in
+   M4C's header block and in the action's doc comment. Was an
+   explicit accepted-trade decision during slice 9d audit.
+2. **Manual invite on conversion.** `convertApplicationToLease`
+   creates the tenant + lease and stops. The LA fires `sendInvite`
+   as a separate manual step from the new tenant's row in
+   `/tenants`. No auto-invite checkbox in the convert dialog. Per
+   `PHASE_4_PLAN.md` §0.5 decision 5 — fewer side-effects per
+   action; LA can confirm everything looks right before sending the
+   email.
+3. **Application document uploads deferred.** Proof of income, ID,
+   prior-residence verification, etc. The
+   `background_check_consent` column is a consent capture only — no
+   integrated workflow. Couples to the document-management module
+   (phase-untagged, likely Phase 6).
+4. **Credit-check / background-check integration deferred.** No
+   third-party API integration. The consent checkbox is captured;
+   the actual check is an out-of-band process owned by the LA.
+   Phase 5+.
+5. **Tour confirmation / reminder emails deferred** per
+   `PHASE_4_PLAN.md` §0.5 decision 6. No new Gate 3 template, no
+   `notifyTourScheduled` helper. Tour notifications wait for the
+   Phase 6 Automation engine to model them as triggered automations
+   rather than per-action sends.
+6. **Kanban view of `/leasing` deferred** per `PHASE_4_PLAN.md`
+   §0.5 decision 4. List view shipped as the slice 9a baseline;
+   Kanban remains an explicit follow-up slice (call it 9a.2 if it
+   materializes). Status is a sortable/filterable column in the
+   list view, not a visual swim-lane.
+7. **Lease renewals workflow.** Adjacent shape to conversion
+   (creates a successor lease from an existing tenant + unit
+   relationship) but materially different. Not in
+   `PHASE_4_PLAN.md` §1 scope.
+8. **No top-level `/tours` calendar route.** Per slice 9b, tours
+   render only as a sub-section on the lead detail page
+   (`/leasing/[leadId]`). A standalone tour calendar /
+   iCal export was explicitly deferred per `PHASE_4_PLAN.md` §1
+   exclusions table.
+9. **`/applications` list-row "Converted" affordance.** Slice 9d
+   ships the conversion-state UI on the application **detail** page
+   only (the green "Converted to tenant + lease" panel with links
+   to `/tenants` and `/leases`). The list view continues to show
+   the status badge with no extra "this app converted" surfacing.
+   Deferred as a follow-up UI slice if walk-test reveals the need.
+
+### 12.7 RLS test-plan delta
+
+One Phase 4 suite is documented in `RLS_TEST_PLAN.md` §4l.
+
+| Suite | Coverage | Status |
+|---|---|---|
+| 13 — leasing CRM | Phase 4 entity tables (leads / tours / applications) cohort gating + cross-org FK pin rejections; A10 confirms RLS does NOT enforce `application_status` transitions; X1-X4 verify the `create_lease_with_tenants` RPC widening + the `tenants.source_application_id` additive column | **authored 2026-05-24** — `supabase/tests/rls_phase4_leasing.sql`, 31/31 passing **on first run** |
+
+**First-run pass.** All 31 assertions were green on initial execution
+against the dev database. This is real signal that the Phase 4
+patterns are stable extensions of established precedents (the §8.1
+FK pin pattern from Phase 2, the narrow-read posture from Phase 3
+`tenant_invites`, the SECURITY DEFINER in-body authority check from
+M3LR) — no surprises during test authoring. Compare to Phase 3 Suite
+8 (`accept_tenant_invite`), where the SECURITY DEFINER + anonymous
+grant + classified-error pattern was novel and the first authoring
+pass surfaced the "no state mutation on classified failure" property
+explicitly.
+
+Cumulative RLS coverage at §12 close: **181 assertions across 13
+suites** (84 prior + 66 Phase 3 + 31 Phase 4). Zero deferred suites.
+Zero assertions targeting a deleted/non-existent policy.
+
+Notable assertions in Suite 13:
+
+- **K3 / T3 / A3** — the load-bearing narrow-read assertions
+  (`MAINTENANCE_TECH` sees 0 rows on all three Phase 4 tables). The
+  property that distinguishes Phase 4 from Phase 3 `messages` (which
+  uses the broader `is_org_staff()` read scope).
+- **K7 / K8** — leads cross-org FK pin rejections (§8.1 closure from
+  M4LDP).
+- **T7 / T8 / T9** — tours cross-org FK pin rejections on all three
+  pinnable columns.
+- **A7 / A8 / A9** — applications cross-org FK pin rejections on all
+  three pinnable columns.
+- **A10** — direct UPDATE `applications.status` from `draft` to
+  `approved` as PM succeeds at the RLS layer (verifies the absence
+  of an RLS RESTRICTIVE policy — transition rules live ONLY in the
+  `updateApplication` server action).
+- **X1** — `LEASING_AGENT` can now call `create_lease_with_tenants`
+  (pre-Phase-4 this would have raised SQLSTATE 42501); the resulting
+  lease lands in the caller's org (two-step verification).
+- **X3** — `MAINTENANCE_TECH` still cannot call the RPC. Widening
+  was to `can_write_tenants()`, not to `is_org_staff()`.
+
+### 12.8 Email-safety delta
+
+**Phase 4 did not touch email infrastructure.** Gate 3 posture
+unchanged from §11.7's posture (which references EMAIL_SAFETY.md §7).
+No Phase 4 amendments to EMAIL_SAFETY.md, no new templates, no new
+template registrations, no new `sendEmail()` chokepoint callers.
+
+Per `PHASE_4_PLAN.md` §0.5:
+- **Decision 5** locked manual invite on conversion (no
+  `convertApplicationAndSendInvite` combined action).
+- **Decision 6** locked no tour confirmation emails (no
+  `tour.confirmation` template, no Gate 3 surface extension).
+
+The existing Phase 3 invite-send infrastructure (slice 6b — used by
+the LA as the manual follow-up after `convertApplicationToLease`) is
+the only email path Phase 4 touches functionally, and it is consumed
+unchanged from §11's certification.
+
+### 12.9 Phase 4 application-layer notes
+
+For completeness, four application-layer items the reviewer may wish
+to know:
+
+- **`application_status` transition map is enforced at the app
+  layer, NOT in RLS.** The `isAllowedTransition` helper in
+  `src/lib/validations/application.ts` defines the allowed-set map
+  (`draft → submitted | withdrawn`; `submitted → under_review |
+  withdrawn | rejected`; `under_review → approved | rejected |
+  withdrawn`; `approved → withdrawn`; `rejected → ∅`;
+  `withdrawn → ∅`). The `updateApplication` server action calls it
+  before any UPDATE; disallowed transitions return a friendly field
+  error. Suite 13 A10 verifies the **absence** of a corresponding
+  RLS RESTRICTIVE policy — a direct UPDATE bypassing the action
+  succeeds at the RLS layer. Per `PHASE_4_PLAN.md` §7 risk 4 and
+  §3c.§8.2: app-layer enforcement is the only layer.
+- **`convertApplicationToLease` three-audit pattern.** On success,
+  the action emits three `logAudit` entries with a shared
+  `metadata.source = "application_conversion"` tag where
+  applicable: `tenant.created` (with `application_id` + `lead_id`),
+  `lease.created` (with `application_id` + `tenant_id` + `unit_id`
+  + `monthly_rent` + `start_date`), and `application.converted`
+  (with `tenant_id` + `lease_id`). The dual-source tagging supports
+  both "list all entities created via conversion" (filter on
+  `metadata.source`) and "find the conversion event for this
+  application" (filter on `action = 'application.converted'`).
+- **`lead.status = 'converted'` soft-write on conversion.** If the
+  converted application has a non-null `lead_id`,
+  `convertApplicationToLease` updates the originating lead's status
+  to `'converted'` (lead_status enum value from M4LD). The update
+  is wrapped in a try/catch that swallows failures — lead status is
+  a CRM hint, not a contract. A failed lead-status write does NOT
+  roll back the conversion. The audit log does NOT record a
+  separate `lead.updated` for the soft-write (the conversion is
+  represented by the three entries above).
+- **`TENANT_WRITE_ROLES` constant consolidation** (slice 9c
+  cleanup). Prior to slice 9c, both `src/lib/data/leads.ts` and
+  `src/lib/data/tours.ts` defined a local `ASSIGNEE_ROLES` constant
+  duplicating the existing `TENANT_WRITE_ROLES` from
+  `src/lib/constants.ts` (the constant has existed since Phase 1).
+  Slice 9c removed the duplications and imported the constant
+  centrally. **No behavior change** — the role set is identical
+  (`SUPER_ADMIN`, `OWNER`, `REGIONAL_MANAGER`, `PROPERTY_MANAGER`,
+  `LEASING_AGENT`). Worth registering for future reviewers who
+  notice the cleanup.
+
+### 12.10 Sign-off
+
+By signing below, the reviewer attests that:
+
+1. The §11 findings remain accurate at the §12.0 snapshot. No
+   Phase 4 work regressed any Phase 1 / Phase 2 / Phase 3 RLS,
+   service-role, audit, email, or AI surface — every Phase 4
+   migration is purely additive except for the explicit §12.2
+   modification.
+2. The Phase 4 RLS additions inventoried in §12.1 have been read
+   and accepted: three new entity tables (leads, tours,
+   applications) with 12 new policies in the narrow read+write
+   posture; the §8.1 cross-org FK pin propagation across all three
+   tables (closed retroactively on leads via M4LDP / commit
+   `dccbf45`, built in from the start on tours and applications);
+   the additive `tenants.source_application_id` column inheriting
+   the existing tenants policies.
+3. The modified Phase 3 surface in §12.2
+   (`create_lease_with_tenants` RPC widening from
+   `is_org_manager()` to `can_write_tenants()`) is **re-certified
+   under the widened authority cohort**. The widening is a
+   deliberate trade per `PHASE_4_PLAN.md` §0.5 decision 3; the RPC
+   remains SECURITY DEFINER; the authentication requirement
+   (`auth.uid()` not null) is unchanged; the cross-org tenant pin
+   in the body is unchanged; the pre-existing `/leases` create
+   surface (`leases/actions.ts`) keeps its narrower `isManager()`
+   action-layer gate.
+4. The nine known limitations in §12.6 are acknowledged as known
+   scope-bounded gaps, not Gate 1 blockers. The orphan-tenant
+   trade-off in `convertApplicationToLease` (item 1) is the most
+   notable; recovery is manual delete + retry and future hardening
+   is a single-RPC atomic wrapper.
+5. The RLS test-plan delta in §12.7 is acknowledged: Suite 13
+   (`rls_phase4_leasing.sql`) is authored and passing 31/31 on
+   first run — covering all three Phase 4 entity tables, all eight
+   §8.1 cross-org FK pin rejections, the RLS-does-not-enforce-
+   status-transitions verification (A10), the RPC widening
+   end-to-end (X1-X3), and the `source_application_id` column FK
+   (X4). Phase 4 RLS coverage is closed. Cumulative coverage now
+   181 / 13 suites.
+6. Phase 4 added **no novel security patterns** and **no new gates**.
+   Gate 1 was extended (three new tables, 12 new policies, one
+   Phase 3 RPC modification); Gates 2-4 were untouched. No new
+   SECURITY DEFINER functions, no new admin-client callsites, no
+   new external user identities, no new helpers, no new triggers
+   beyond three `set_updated_at` attachments.
+
+| Reviewer | Date | Outcome |
+|---|---|---|
+| Kris Kelley | pending | pending |
