@@ -384,7 +384,8 @@ export type Database = {
           metadata: Json;
           tokens_input: number | null;
           tokens_output: number | null;
-          cost_cents: number | null;
+          /** numeric(10,4) — Postgres returns numeric as string to preserve precision. */
+          cost_cents: string | null;
           model_name: string | null;
           created_at: string;
         };
@@ -401,7 +402,8 @@ export type Database = {
           metadata?: Json;
           tokens_input?: number | null;
           tokens_output?: number | null;
-          cost_cents?: number | null;
+          /** numeric(10,4) — supabase-js accepts number or string on insert. */
+          cost_cents?: number | string | null;
           model_name?: string | null;
           created_at?: string;
         };
@@ -440,7 +442,8 @@ export type Database = {
           scope_filter: Json;
           insight: Json;
           model_name: string | null;
-          cost_cents: number | null;
+          /** numeric(10,4) — Postgres returns numeric as string to preserve precision. */
+          cost_cents: string | null;
           tokens_input: number | null;
           tokens_output: number | null;
           generated_by: string | null;
@@ -453,7 +456,8 @@ export type Database = {
           scope_filter?: Json;
           insight: Json;
           model_name?: string | null;
-          cost_cents?: number | null;
+          /** numeric(10,4) — supabase-js accepts number or string on insert. */
+          cost_cents?: number | string | null;
           tokens_input?: number | null;
           tokens_output?: number | null;
           generated_by?: string | null;

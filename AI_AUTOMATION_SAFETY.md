@@ -109,6 +109,8 @@ or automation runs until a human explicitly raises the mode.
   written to `ai_logs` on every successful suggestion.
 - Pricing constants are hardcoded in `src/lib/ai/client.ts`. If Anthropic
   pricing changes, update there.
+- Precision upgraded to numeric(10,4) in slice 11f (sub-cent resolution;
+  supports cost values up to ~$10k per call).
 
 **Rate limiting**:
 - 10 calls per minute per organization. Enforced by `checkAiRateLimit()`

@@ -75,7 +75,9 @@ function computeCostCents(
   }
   const inputCents = (inputTokens * rate.input) / 1_000_000;
   const outputCents = (outputTokens * rate.output) / 1_000_000;
-  return Math.round(inputCents + outputCents);
+  // Preserve sub-cent precision (slice 11f). cost_cents is now
+  // numeric(10,4) at the schema layer; supabase-js accepts the float.
+  return inputCents + outputCents;
 }
 
 /**
