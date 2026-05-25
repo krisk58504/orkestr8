@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PaymentsView } from "@/components/payments/payments-view";
 import { RentChargesView } from "@/components/payments/rent-charges-view";
+import { StatementPicker } from "@/components/payments/statements/statement-picker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { PaymentRow } from "@/lib/data/payments";
 import type { RentChargeRow } from "@/lib/data/rent-charges";
@@ -18,6 +19,8 @@ type LeaseOption = {
   primary_tenant_name: string | null;
 };
 
+type PaymentsTab = "charges" | "payments" | "statements";
+
 export function PaymentsTabs({
   charges,
   payments,
@@ -25,6 +28,7 @@ export function PaymentsTabs({
   tenants,
   units,
   properties,
+  statementTenants,
   canManage,
   initialTab,
 }: {
@@ -39,15 +43,21 @@ export function PaymentsTabs({
   }[];
   units: { id: string; unit_number: string }[];
   properties: { id: string; name: string }[];
+  statementTenants: { id: string; name: string; email: string | null }[];
   canManage: boolean;
-  initialTab: "charges" | "payments";
+  initialTab: PaymentsTab;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<"charges" | "payments">(initialTab);
+  const [tab, setTab] = useState<PaymentsTab>(initialTab);
 
   function handleTabChange(value: string) {
-    const next = value === "payments" ? "payments" : "charges";
+    const next: PaymentsTab =
+      value === "payments"
+        ? "payments"
+        : value === "statements"
+          ? "statements"
+          : "charges";
     setTab(next);
     const params = new URLSearchParams(searchParams.toString());
     if (next === "charges") {
@@ -64,6 +74,7 @@ export function PaymentsTabs({
       <TabsList>
         <TabsTrigger value="charges">Charges</TabsTrigger>
         <TabsTrigger value="payments">Payments</TabsTrigger>
+        <TabsTrigger value="statements">Statements</TabsTrigger>
       </TabsList>
       <TabsContent value="charges" className="pt-4">
         <RentChargesView
@@ -81,6 +92,9 @@ export function PaymentsTabs({
           charges={charges}
           canManage={canManage}
         />
+      </TabsContent>
+      <TabsContent value="statements" className="pt-4">
+        <StatementPicker tenants={statementTenants} />
       </TabsContent>
     </Tabs>
   );

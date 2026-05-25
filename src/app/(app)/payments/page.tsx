@@ -8,6 +8,7 @@ import {
   listRentChargeFormOptions,
   listRentCharges,
 } from "@/lib/data/rent-charges";
+import { listTenants } from "@/lib/data/tenants";
 import { perfEnd, perfStart } from "@/lib/perf";
 import { createClient } from "@/lib/supabase/server";
 
@@ -23,20 +24,34 @@ export default async function PaymentsPage({
 
   const supabase = await createClient();
   const perfT = perfStart();
-  const [charges, payments, formOptions, propertiesRes] = await Promise.all([
-    listRentCharges(context.organization.id),
-    listPayments(context.organization.id),
-    listRentChargeFormOptions(context.organization.id),
-    supabase
-      .from("properties")
-      .select("id, name")
-      .eq("organization_id", context.organization.id)
-      .order("name"),
-  ]);
+  const [charges, payments, formOptions, propertiesRes, allTenants] =
+    await Promise.all([
+      listRentCharges(context.organization.id),
+      listPayments(context.organization.id),
+      listRentChargeFormOptions(context.organization.id),
+      supabase
+        .from("properties")
+        .select("id, name")
+        .eq("organization_id", context.organization.id)
+        .order("name"),
+      listTenants(context.organization.id),
+    ]);
   perfEnd("payments.page.data", perfT, "/payments");
 
   const params = await searchParams;
-  const initialTab = params.tab === "payments" ? "payments" : "charges";
+  const initialTab: "charges" | "payments" | "statements" =
+    params.tab === "payments"
+      ? "payments"
+      : params.tab === "statements"
+        ? "statements"
+        : "charges";
+
+  // Slim tenant shape for the statement picker — name + email only.
+  const statementTenants = allTenants.map((t) => ({
+    id: t.id,
+    name: `${t.first_name} ${t.last_name}`.trim(),
+    email: t.email,
+  }));
 
   return (
     <div className="space-y-6">
@@ -51,6 +66,7 @@ export default async function PaymentsPage({
         tenants={formOptions.tenants}
         units={formOptions.units}
         properties={propertiesRes.data ?? []}
+        statementTenants={statementTenants}
         canManage={canWriteTenants(context.roles)}
         initialTab={initialTab}
       />
