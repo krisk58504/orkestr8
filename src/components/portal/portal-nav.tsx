@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, MessageSquare, Wrench, type LucideIcon } from "lucide-react";
+import {
+  CreditCard,
+  Home,
+  MessageSquare,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type PortalNavItem = {
@@ -13,6 +19,7 @@ type PortalNavItem = {
 
 const PORTAL_NAV_ITEMS: PortalNavItem[] = [
   { label: "Welcome", href: "/portal/welcome", icon: Home },
+  { label: "Rent", href: "/portal/rent", icon: CreditCard },
   { label: "Maintenance", href: "/portal/maintenance", icon: Wrench },
   { label: "Messages", href: "/portal/messages", icon: MessageSquare },
 ];

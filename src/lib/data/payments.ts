@@ -179,11 +179,81 @@ export async function listPaymentsForCharge(
 }
 
 /**
+ * Tenant-level rollup balance. Sibling helper to computeChargeBalance —
+ * the second member of the §7 risk 4 single-source-of-truth family. Used
+ * by slice 10c's tenant portal Rent tab summary card and (in slice 10f)
+ * the Rent roll report's per-tenant aggregation.
+ *
+ * - total_owed sums amount_due for status IN ('open', 'partial') only.
+ *   Voided and fully-paid charges contribute zero.
+ * - total_paid_on_open sums non-refunded payments against THOSE charges
+ *   only — payments against fully-paid charges are not counted toward
+ *   "what's still owed."
+ * - balance can be negative when staff has recorded partial payments
+ *   exceeding the original amount_due on an open charge (rare; the
+ *   absorption pattern via charge_type='credit' rent_charges is the
+ *   documented recovery per §0.5 decision 2).
+ */
+export async function computeTenantBalance(
+  tenantId: string,
+  orgId: string,
+): Promise<{
+  total_owed: number;
+  total_paid_on_open: number;
+  balance: number;
+  open_charge_count: number;
+} | null> {
+  const supabase = await createClient();
+
+  const { data: openCharges } = await supabase
+    .from("rent_charges")
+    .select("id, amount_due")
+    .eq("organization_id", orgId)
+    .eq("tenant_id", tenantId)
+    .in("status", ["open", "partial"]);
+
+  const charges = openCharges ?? [];
+  const totalOwed = charges.reduce((sum, c) => sum + Number(c.amount_due), 0);
+
+  if (charges.length === 0) {
+    return {
+      total_owed: 0,
+      total_paid_on_open: 0,
+      balance: 0,
+      open_charge_count: 0,
+    };
+  }
+
+  const { data: payments } = await supabase
+    .from("payments")
+    .select("amount_paid")
+    .eq("organization_id", orgId)
+    .in(
+      "charge_id",
+      charges.map((c) => c.id),
+    )
+    .is("refunded_at", null);
+
+  const totalPaid = (payments ?? []).reduce(
+    (sum, p) => sum + Number(p.amount_paid),
+    0,
+  );
+
+  return {
+    total_owed: totalOwed,
+    total_paid_on_open: totalPaid,
+    balance: totalOwed - totalPaid,
+    open_charge_count: charges.length,
+  };
+}
+
+/**
  * The load-bearing reconciliation helper called out in PHASE_5_PLAN.md §7
- * risk 4. THIS IS THE ONLY balance-computation helper in the codebase —
- * every view that displays balance (rent-charges-view, payments-view,
- * future tenant Rent tab, future statements, future Rent roll aging)
- * MUST route through this. No inline arithmetic on amount_due / amount_paid.
+ * risk 4. THIS IS THE ONLY per-charge balance-computation helper in the
+ * codebase — every view that displays per-charge balance (rent-charges-
+ * view, payments-view, future tenant Rent tab open-charges list, future
+ * statements) MUST route through this. No inline arithmetic on
+ * amount_due / amount_paid.
  *
  * - amount_paid sums payments where refunded_at IS NULL (refunded
  *   payments do not count toward the charge balance — they were
