@@ -5,6 +5,9 @@
 > **Sections**:
 > - **Section 1** — Phase 6 problem space (deferral catalog, candidate framings A–F, dependency graph, sequencing questions, three honest frames)
 > - **Section 2** — Automation Engine design space (added 2026-05-24)
+> - **Section 3** — AI Engine design space (added 2026-05-24)
+> - **Section 4** — Inspections design space (added 2026-05-24)
+> - **Section 5** — Amenities design space (added 2026-05-24)
 
 ---
 
@@ -781,3 +784,1076 @@ That work happens in a future session with **this catalog + Section 1's frames +
 ---
 
 **Stopping here.** Section 2 cataloged. Design space captured for the Automation engine candidate. Future sections (Phase 6 AI engine design space, Inspections, Amenities) can be added to this file as their own §3 / §4 / §5 when the conversation moves to them.
+
+---
+
+# Section 3 — AI engine design space catalog
+
+> **Added 2026-05-24. Scratch work, NOT a locked plan. Input for a future PHASE_6_PLAN.md authoring session with partner feedback signal in hand.**
+>
+> Scope: this section dives into **just** the AI engine candidate (Candidate B from Section 1). It does NOT decide whether AI is the right Phase 6 first move — that's still a Section 1 strategic question. It catalogs the design space so that **if** AI is picked, the lock-in conversation has the options in front of it.
+
+## Key read-first findings (massive scope reframing)
+
+**Phase 6 AI is dramatically smaller than the prompt's framing suggests.** Most of the AI gate infrastructure already exists from Phase 1-2 staging. The audit must reframe before cataloging.
+
+### What already exists (verified by read)
+
+1. **`organizations.ai_mode` column** — 5 SPEC-required values; default `'disabled'`. Per migration `20260518000200_core_tenancy.sql`.
+
+2. **`ai_logs` table** — full schema with `prompt jsonb`, `response jsonb`, `ai_mode` enum, `status` text (logged/drafted/suggested/executed/blocked). Per migration `20260518000500_infrastructure.sql`.
+
+3. **`canRunAutomationAction(supabase, orgId, module, actionType)`** — fully implemented at `src/lib/auth/permissions.ts` (201 lines). Returns `{ allowed, mode, requiresApproval, reason }`. **Implements ALL 5 AI modes** (disabled / draft_only / suggest_only / auto_with_approval / fully_automated) with deny-by-default semantics. Real (side-effecting) actions additionally require per-module opt-in stored in `settings` table (`module='ai'`, `key='module:<name>'`, `value.enabled=true`).
+
+4. **`AutomationModule` enum** — `maintenance | leasing | communications | vendors | payments | reporting | general` (7 modules — matches the 6 SPEC AI surfaces + 'general' catch-all).
+
+5. **`AutomationActionType` enum** — 9 types split into non-acting (`draft / suggest / summarize`) and side-effecting (`send_message / dispatch_vendor / approve_invoice / modify_financials / escalate / notify_external`). Maps 1:1 to SPEC line 462-466 prohibitions.
+
+6. **`logAiAction()`** at `src/lib/data/ai-logs.ts` — full ai_logs writer through service-role admin client. Failures swallowed (matching `logAudit()` precedent).
+
+7. **`runPlaceholderTriage()`** at `src/lib/ai/maintenance-triage.ts` (246 lines) — full deterministic-rules placeholder triage. Returns `{ suggestedPriority, suggestedCategory, urgencyScore, confidence, summary, recommendedActions, signals, disclaimer }`. Pure module, no I/O.
+
+8. **`runMaintenanceTriage()`** server action at `src/app/(app)/maintenance/triage-actions.ts` — full pipeline shipping: `requireSession` + `isStaff` gate → `canRunAutomationAction` Gate 2 check → call placeholder → `logAiAction` (both blocked + suggested paths) → persist to `maintenance_requests.ai_triage` jsonb + `ai_triaged_at` timestamp → `logAudit` with `maintenance_request.ai_triaged` action. **The complete pattern that all Phase 6 AI surfaces will mirror.**
+
+9. **UI**: `maintenance-triage-card.tsx` component + integration on `/maintenance/[id]/page.tsx`. The advisory-suggestion display pattern is shipped.
+
+10. **`AI_AUTOMATION_SAFETY.md` already exists** — 60-line file authored at Phase 1 covering default posture, all 5 modes, central control function shape, logging contract, Phase 1 status, and "before enabling AI in production" checklist. **Section 6 of that file is the production-enablement readiness list** that Phase 6 AI engine must close.
+
+### Errata for prior audit (PHASE_6_AUDIT_DRAFT.md Section 2)
+
+Section 2 of PHASE_6_AUDIT_DRAFT.md (Automation engine audit, committed yesterday as `4f3af6b`) contains two incorrect claims:
+
+- Section 2 says `canRunAutomationAction` is "a real helper from slice 1" / "the seam exists from day one." Actually it ALREADY EXISTS — full implementation, not a stub. The Automation engine slice doesn't need to build it; it just needs to call it.
+
+- Section 2 says "`AI_AUTOMATION_SAFETY.md` is a SPEC-required file (line 100) that doesn't exist yet." **Wrong** — the file exists with 60 lines of content. Phase 6 AI engine should extend it, not author it from scratch.
+
+Section 2 corrections are minor (rephrase two paragraphs); not load-bearing for the catalog. Offer to amend Section 2 after this audit lands, or fold into the future PHASE_6_PLAN.md authoring session as a correction at lock-in time.
+
+### What does NOT exist (the genuine Phase 6 AI engine surface)
+
+1. **Any LLM API integration** — no OpenAI, Anthropic, langchain, @ai-sdk in `package.json`. No API key in env. The placeholder triage is **deterministic rules**; no network call has ever happened.
+
+2. **`is_ai_actor()` helper** — confirmed absent via grep. The deferred RESTRICTIVE policy mechanism per §13.9.
+
+3. **The 5 other SPEC-required AI surfaces** — leasing assistant, message drafting, summaries, reporting insights, vendor suggestions. The maintenance triage placeholder is the only AI surface wired.
+
+4. **A way for an org admin to elevate `ai_mode` from `disabled`** — `AI_AUTOMATION_SAFETY.md` §6 explicitly notes "Mode elevation UI (if added) restricted to OWNER and audit-logged" as a TODO. No such UI ships today.
+
+5. **Cost-tracking columns on ai_logs** — no `tokens_input`, `tokens_output`, `cost_cents`, `model_name` columns. Phase 1 staging didn't anticipate these.
+
+### Phase 6 AI engine scope reframing
+
+It's:
+1. Add LLM SDK + API key infrastructure
+2. Build the AI client wrapper (model selection, retry, fallback, prompt assembly)
+3. Replace `runPlaceholderTriage` with a real LLM call (one file, one function body swap)
+4. Build the 5 OTHER SPEC-required AI surfaces, each following the established maintenance-triage pattern
+5. Add `is_ai_actor()` RESTRICTIVE policy on financial tables per §13.9
+6. Add mode-elevation UI for org admins (per AI_AUTOMATION_SAFETY.md §6 checklist)
+7. Possibly add cost-tracking columns to ai_logs
+
+Most of this is "fill in the placeholders the architecture already accounts for." Much smaller than building from scratch.
+
+---
+
+## SPEC verbatim grounding
+
+**Phase 6 line (line 564)**:
+```
+Phase 6:
+Automations + AI + inspections + amenities
+```
+
+**SPEC §"AI LAYER (REQUIRED)" (line 410-418)** — the 6 named surfaces:
+```
+AI must support:
+- Maintenance triage
+- Leasing assistant
+- Message drafting
+- Summaries
+- Reporting insights
+- Vendor suggestions
+
+AI must NEVER act without permission controls.
+```
+
+**SPEC Gate 2 (line 35-68 + 462-477)** — full AI gate spec, already implemented per `canRunAutomationAction`:
+```
+Default AI mode: disabled or draft-only.
+
+Required AI modes:
+- disabled
+- draft_only
+- suggest_only
+- auto_with_approval
+- fully_automated
+
+Every AI or automation action must check the organization/module setting before running.
+Create a centralized permission function such as: canRunAutomationAction(orgId, module, actionType)
+
+RULES:
+- AI cannot send messages by default
+- AI cannot dispatch vendors
+- AI cannot modify financial data
+- AI cannot escalate issues automatically
+
+All AI actions must be logged in `ai_logs`.
+```
+
+**SPEC line 199**:
+```
+Placeholder AI service layer (OpenAI/Claude pluggable)
+```
+
+That line is the entire vendor-choice guidance from SPEC. "OpenAI/Claude pluggable" — i.e., either vendor is acceptable; abstraction expected.
+
+**SPEC line 221** (positioning):
+```
+"The AI Operating System for Multifamily Property Management"
+```
+
+AI is the headline positioning. Shipping any real LLM surface materially changes the product narrative.
+
+## Accumulated deferrals routed here
+
+From SECURITY_REVIEW.md §13.6 + §13.9:
+
+| # | Item | Source | Notes |
+|---|---|---|---|
+| 1 | AI summaries in owner portal | §13.6 item 14 | SPEC line 381 + AI Layer §"Summaries" |
+| 2 | AI insights on reports | §13.6 item 15 | SPEC line 415 "Reporting insights" |
+| 3 | `is_ai_actor()` RESTRICTIVE policy on financial tables | §13.9 | Structural enforcement of SPEC line 465 |
+| 4 | Maintenance triage AI (REAL LLM, not placeholder) | implicit | Replace `runPlaceholderTriage` with actual model |
+| 5 | Leasing assistant AI | implicit | SPEC line 412 |
+| 6 | Message drafting AI | implicit | SPEC line 413 |
+| 7 | Vendor suggestions AI | implicit | SPEC line 416 |
+
+**7 items.** The first 4 are explicitly deferred via prior sign-off documents; the last 3 are implicit-from-SPEC.
+
+## Design-space catalog
+
+### A. LLM vendor choice
+
+| Option | Pros | Cons |
+|---|---|---|
+| **OpenAI** (GPT-4o, GPT-4.1) | Most mature; widest tool/function-calling support; broadest community knowledge | Single vendor; rate limits; pricing changes |
+| **Anthropic** (Claude Sonnet, Opus, Haiku) | Strong on long-context reasoning; high safety profile; SPEC line 199 explicitly co-mentions; Claude is the AI being used to BUILD this product (some symmetry value) | Slightly smaller ecosystem; less tool-calling depth than OpenAI |
+| **Both via Vercel AI SDK** | Provider-agnostic abstraction; switch via env config; multi-provider fallback | New abstraction layer; some features (tool calls) differ in shape across providers |
+| **Self-hosted (Ollama, vLLM)** | Zero per-call cost; private | Operationally heavy; weaker model quality; unlikely fit for current Vercel-serverless deployment |
+
+**Honest assessment**: SPEC line 199 names OpenAI/Claude. Vercel AI SDK is the de-facto Next.js choice. The "right" answer depends on (a) whether we want vendor flexibility from day one (Vercel AI SDK) or commit to one (faster ship, less abstraction debt) and (b) whether cost is a primary constraint (Anthropic's Haiku and OpenAI's GPT-4o-mini are similar price; Sonnet/GPT-4o are similar; Opus/GPT-4 are premium).
+
+### B. The 6 SPEC-required AI surfaces — concrete shape
+
+For each surface, here's what shipping it looks like, given the maintenance-triage precedent:
+
+| Surface | Input data | Output shape | Likely module | Likely action_type | UI surface |
+|---|---|---|---|---|---|
+| **Maintenance triage** | request title + description + category + priority | Already defined (`MaintenanceTriageResult`) | `maintenance` | `suggest` | Card on `/maintenance/[id]` (already shipped — placeholder content) |
+| **Leasing assistant** | Lead profile + activity history; possibly conversation transcript | Likely "next best action" + qualification score + summary | `leasing` | `suggest` or `summarize` | Sidebar on `/leasing/[leadId]`; or inline pre-fill on application from lead data |
+| **Message drafting** | Conversation history + tenant context | Draft reply text (1-3 variants) | `communications` | `draft` | Compose box on `/messages/[tenantId]` |
+| **Summaries** | Long thread / report / property dossier | Summary text (paragraph or bulleted) | `general` or per-domain | `summarize` | Card on owner portal `/owner-portal`; inline on long messages thread |
+| **Reporting insights** | Report data (rent roll, occupancy, maintenance metrics) | Natural-language analysis | `reporting` | `summarize` | Insight card at top of each report page (`/reports/<name>` + `/owner-portal/reports/<name>`) |
+| **Vendor suggestions** | Work order details + vendor history + ratings | Ranked vendor list with rationale | `vendors` | `suggest` | Sidebar on `/work-orders/[id]` when assigning |
+
+**Each surface follows the same pattern** as maintenance triage: server action → gate via `canRunAutomationAction` → call AI client → log via `logAiAction` → persist suggestion → log via `logAudit`. The pattern is shipped; the work is multiplying it 5 more times with different prompts + different destination tables.
+
+### C. AI modes — concrete behavior per mode per surface
+
+`canRunAutomationAction` already implements the matrix. Surfacing the matrix here for the planning conversation:
+
+| Mode | maintenance triage (`suggest`) | message drafting (`draft`) | message send (`send_message`) | financial modify (`modify_financials`) |
+|---|---|---|---|---|
+| `disabled` | denied | denied | denied | denied |
+| `draft_only` | denied (not a draft) | allowed | denied | denied |
+| `suggest_only` | allowed | allowed | denied | denied |
+| `auto_with_approval` | allowed (no approval needed — not real action) | allowed | allowed IFF `settings.module:communications.enabled = true` + human approves | NEVER allowed (per `is_ai_actor()` deferral §13.9 — even fully_automated must not write financials) |
+| `fully_automated` | allowed | allowed | allowed IFF module enabled | NEVER allowed (same as above) |
+
+The `modify_financials` "never allowed" cell is what `is_ai_actor()` enforces structurally. Today it's enforced only by code paths (no AI write path exists). Phase 6 wires the RESTRICTIVE policy.
+
+### D. The `is_ai_actor()` RESTRICTIVE enforcement (§13.9 deferred work)
+
+Two questions:
+
+1. **How does `is_ai_actor()` detect an AI caller?**
+   - **D1**: JWT custom claim — AI runtime injects `is_ai_actor: true` into the request JWT before signing
+   - **D2**: Postgres setting — runtime calls `set_config('app.is_ai_actor', 'true', true)` at the start of each AI-initiated session
+   - **D3**: Explicit table column on `users` — `users.is_ai_service_account boolean` with system-account users
+   - **D4**: Service-role bypass already exists; AI calls always go through the admin client and are NEVER permitted to call any write path
+
+   **Lean honest**: D4 is the simplest and matches the existing pattern. The AI surfaces all write to `ai_logs` (admin client) + `maintenance_requests.ai_triage` (still admin client per `runMaintenanceTriage` pattern). They don't write to rent_charges / payments / leases / anything financial. So the structural enforcement could be "AI never has a write path to financial tables; this is enforced by NOT BUILDING one, not by an RLS policy." But that's passive enforcement, which §13.9 explicitly deferred to "ship structural enforcement in Phase 6." **Surface the question for explicit decision.**
+
+2. **Which tables get the RESTRICTIVE policy?**
+   - Phase 5 financial: `rent_charges`, `payments`
+   - Phase 3-4 financial-adjacent: `leases` (lease modifications could change tenants' financial obligations)
+   - Phase 1: `tenants` (could indirectly affect financial via tenant→lease relationships)
+
+   Lean: start with `rent_charges` + `payments` per §13.9 explicit wording. `leases` is debatable; `tenants` probably not. **Surface for decision.**
+
+### E. `ai_logs` writing contract
+
+Already implemented but worth revisiting for Phase 6:
+
+| Field | Current | Phase 6 question |
+|---|---|---|
+| `prompt jsonb` | Stored full | Should long prompts be truncated for storage? PII implications? |
+| `response jsonb` | Stored full | Same. |
+| `metadata` | jsonb, freeform | Should we add structured cost tracking (tokens_input, tokens_output, cost_cents, model_name) as first-class columns OR keep as metadata? |
+| Retention | No policy | When does old ai_logs data get pruned? Forever? 90 days? |
+| PII handling | None explicit | Prompts contain tenant names/addresses. Encryption at rest? Redaction? |
+
+Surface for decision: are cost-tracking columns added now (small migration) or never (metadata-only)?
+
+### F. First-slice scope
+
+Six AI surfaces is too many for one slice. Options:
+
+| Option | Description | Notes |
+|---|---|---|
+| **F1** Infrastructure-only | LLM client + AI mode elevation UI + `is_ai_actor()` policy + cost tracking columns; placeholder triage stays as-is | Cleanest foundation; user-facing change is "AI mode toggleable" only; no real LLM call |
+| **F2** Infrastructure + real triage | F1 + replace `runPlaceholderTriage` with real LLM call to a chosen provider | Vertical slice that proves the pattern with the existing UI; uses placeholder's existing card |
+| **F3** Infrastructure + summaries | F1 + AI summaries on owner portal + reports (SPEC line 381 + 415) | Multiple consumers; demoable for sales |
+| **F4** Infrastructure + message drafting | F1 + draft replies in tenant messaging | Tenant-portal-facing AI; first AI feature a tenant might experience |
+
+**Honest leans**:
+- F2 ships fastest (one prompt design, existing UI, low-risk surface — triage is `suggest` not real action)
+- F3 has higher demo impact but more UI/prompt design work
+- F4 is tenant-facing which surfaces additional safety questions (prompt injection from user-controlled message content)
+
+The audit doesn't pick. Surface all.
+
+### G. Cost economics (genuine business decision)
+
+Outside-my-knowledge territory. Honest framing:
+
+- **Per-call cost estimates** (approximate): GPT-4o-mini / Claude Haiku ≈ $0.001-0.01 per triage call; GPT-4o / Claude Sonnet ≈ $0.01-0.10; GPT-4 / Claude Opus ≈ $0.05-0.50. Order of magnitude varies wildly with prompt + response length.
+- **At scale**: 1000 orgs × 100 maintenance requests/month × 5 AI surfaces × ~$0.02/call ≈ $10,000/month. Real money but not catastrophic at that scale.
+- **Free-tier viability**: if every org gets unlimited AI on signup, costs scale linearly with sign-ups. Most SaaS gates AI behind paid tiers.
+- **Rate limiting**: org-level quota (e.g., 1000 AI calls per month per org) is feasible — the `ai_logs` table already records every call.
+- **Cost monitoring**: requires the metadata structure to track cost-per-call. See E above.
+
+**These are real business decisions** (pricing, gating, monitoring). They will inform Phase 6 AI engine shape but are not technical decisions. Surface for partner conversation.
+
+### H. AI safety surfaces beyond `canRunAutomationAction`
+
+| Surface | Status | Phase 6 work |
+|---|---|---|
+| Gate 2 chokepoint | ✅ Exists (canRunAutomationAction) | Validate every new AI call site uses it |
+| `ai_logs` writing | ✅ Exists (logAiAction) | Continue using; add cost columns? |
+| Default `disabled` mode | ✅ Exists (every org defaults to disabled) | Validate mode-elevation UI requires OWNER role |
+| **Prompt injection protection** | ❌ Not addressed | Input sanitization; preamble that instructs model to treat user content as data, not commands |
+| **Output sanitization** | ❌ Not addressed | Markdown safety; never auto-execute model-returned commands |
+| **`is_ai_actor()` RESTRICTIVE** | ❌ Deferred per §13.9 | Build helper + RESTRICTIVE policy |
+| **Mode elevation audit logging** | ❌ Not explicitly addressed | When org changes ai_mode from disabled → suggest_only, audit log entry must record who/when |
+| **Loop prevention** | Partial (`checkRecentDuplicate` for email) | Cross-applicable to AI calls? An auto-triage that triggers an auto-message that triggers another auto-triage is a loop. |
+| **Multi-tenancy** | ✅ Per-org via canRunAutomationAction | Prompt construction must NEVER mix data from multiple orgs into one call. Validate at design time, not runtime. |
+
+### I. Streaming vs. batch responses
+
+- **Streaming (SSE)**: model tokens stream to UI as generated. Modern UX, lower perceived latency. Adds complexity (route handler must stream; UI must consume stream).
+- **Batch (synchronous)**: full response returned after model completes. Simpler. Higher perceived latency.
+
+**Lean for slice 1**: batch. Streaming is a UX polish that can ship later. The existing triage pattern is batch-style — preserves consistency.
+
+### J. Multi-provider abstraction
+
+If we go Vercel AI SDK or roll our own abstraction:
+- Pro: vendor switch is config flag
+- Con: feature-shape differences across providers (tool calling, vision, structured output) leak through the abstraction
+
+**Lean honest**: single-provider commit for slice 1. Add abstraction layer if a future slice ever wants to switch.
+
+### K. AI_AUTOMATION_SAFETY.md extensions
+
+The file exists (60 lines) and covers Phase 1 baseline. Phase 6 AI engine should ADD sections:
+- §7 Phase 6 status — what AI surfaces ship, what models are used, what cost monitoring is in place
+- §8 Production readiness — extending the §6 checklist (which items now closed, which still open)
+- §9 (possibly) prompt injection / output sanitization discipline
+
+This becomes part of Phase 6 AI engine sign-off (§14 in SECURITY_REVIEW.md).
+
+## Mid-flight decisions to lock at PHASE_6_PLAN.md authoring time
+
+Enumerated for the future planning session. **NOT picked tonight.**
+
+1. **AI vendor** — OpenAI / Anthropic / Vercel AI SDK abstraction / both. **Probable lean**: Vercel AI SDK with Anthropic Claude Sonnet as default model.
+
+2. **First surface in slice 1** — triage (replace placeholder) / summaries / message drafting / something else. **Probable lean**: F2 (triage) — uses existing UI, lowest-risk surface, proves end-to-end pattern.
+
+3. **`is_ai_actor()` detection mechanism** — D1 JWT claim / D2 Postgres setting / D3 service-account column / D4 service-role-bypass-only. **Probable lean**: D4 (no AI write paths to financial tables — passive structural enforcement) OR D2 (Postgres setting — adds runtime guard).
+
+4. **Tables receiving RESTRICTIVE policy** — `rent_charges` + `payments` only / + `leases` / + `tenants`. **Probable lean**: `rent_charges` + `payments` only.
+
+5. **Cost tracking columns on ai_logs** — add now / metadata-only. **Probable lean**: add now (`tokens_input int`, `tokens_output int`, `cost_cents int`, `model_name text`) — small migration, big observability value.
+
+6. **AI mode elevation UI** — staff-facing toggle / OWNER-only / settings page integration. **Probable lean**: settings page integration with OWNER-only gate, audit-logged.
+
+7. **Prompt + response retention** — forever / 90 days / 1 year. **Probable lean**: forever (audit peer); revisit if storage cost becomes an issue.
+
+8. **AI free-tier vs paid-tier feature gating** — all orgs get AI / paid tier only. **Probable lean**: all orgs get AI capability but per-org quota in metadata for future monetization.
+
+9. **Streaming responses vs batch** — streaming / batch. **Probable lean**: batch in slice 1.
+
+10. **AI failure mode** — hard error / graceful degrade / queued retry. **Probable lean**: graceful degrade ("AI suggestion unavailable — try again later" + log to ai_logs with status='blocked' + reason='provider_error').
+
+11. **Prompt injection protection strategy** — strict input templating + content sanitization / model-side instructions / both. **Probable lean**: both. Belt + suspenders for tenant-facing AI surfaces (message drafting).
+
+12. **Multi-tenancy isolation** — code review only / explicit boundary enforcement. **Probable lean**: explicit boundary helper that asserts every AI call has been scoped to a single org.
+
+13. **AI_AUTOMATION_SAFETY.md extensions** — author with slice 1 / defer to §14 sign-off. **Probable lean**: extend with slice 1 (small additions; not a re-author).
+
+14. **AI surface ordering across multi-slice arc** — triage → summaries → drafting → insights → vendor suggestions → leasing assistant / other. **Probable lean**: triage first (existing UI), then summaries (high-leverage, demoable), then message drafting (tenant-facing — needs prompt injection discipline), then insights, then vendor suggestions, then leasing assistant.
+
+15. **Audit log integration** — every AI call writes ai_logs only / both ai_logs AND audit_log. **Probable lean**: maintenance triage precedent does BOTH (ai_logs for the AI-specific data + audit_log entry like `maintenance_request.ai_triaged` for the cross-entity audit thread). Continue that pattern.
+
+16. **Mode elevation requires re-attestation** — OWNER can flip without ceremony / OWNER must confirm with re-auth / written acknowledgment. **Probable lean**: flip-with-audit-log only; re-auth is overkill.
+
+## File inventory sketch — slice 1 (infrastructure + real triage)
+
+Rough estimate, assuming F2 (replace placeholder triage with real LLM call):
+
+| # | Path | Op | Why |
+|---|---|---|---|
+| 1 | `package.json` | edit | add `@anthropic-ai/sdk` or `openai` or `ai` (Vercel AI SDK) + provider SDK |
+| 2 | `supabase/migrations/<date>_phase6_ai.sql` | new | `is_ai_actor()` helper function + RESTRICTIVE policies on `rent_charges` + `payments` + optional ai_logs cost columns |
+| 3 | `src/lib/types/database.ts` | edit | new column types on ai_logs if added |
+| 4 | `src/lib/ai/client.ts` | new | LLM client wrapper (model selection, retry, timeout, error handling) |
+| 5 | `src/lib/ai/prompts/maintenance-triage.ts` | new | the prompt template + result schema for triage |
+| 6 | `src/lib/ai/maintenance-triage.ts` | edit | replace `runPlaceholderTriage` body with real LLM call; same return shape so caller unchanged |
+| 7 | `src/lib/data/ai-logs.ts` | edit | extend `logAiAction` params with optional cost-tracking fields |
+| 8 | `src/app/(app)/maintenance/triage-actions.ts` | edit | pass cost-tracking metadata through to logAiAction |
+| 9 | `src/components/maintenance/maintenance-triage-card.tsx` | maybe edit | small adjustment if LLM response shape differs from placeholder |
+| 10 | `src/app/(app)/settings/ai/page.tsx` | new | AI mode elevation UI (OWNER-only) |
+| 11 | `src/app/(app)/settings/ai/actions.ts` | new | server action to flip ai_mode + audit log entry |
+| 12 | `src/components/settings/ai-mode-section.tsx` | new | the mode-elevation UI component |
+| 13 | `src/lib/auth/permissions.ts` | maybe edit | extend if needed; likely unchanged |
+| 14 | `.env.example` | edit | add `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` |
+| 15 | `AI_AUTOMATION_SAFETY.md` | edit | extend with §7 Phase 6 status + revised §6 checklist |
+| 16 | `src/components/layout/nav.ts` | maybe edit | settings nav already exists; no flip needed |
+
+**Estimate: 14-16 files** for slice 1. Smaller than I initially expected because the AI gate + ai_logs writer + canRunAutomationAction + placeholder triage + UI are all already shipped.
+
+This is roughly half the size of Phase 5 slice 10e (19 files) and significantly smaller than slice 10f (23 files).
+
+## RLS posture surfaced for future planning
+
+The AI runtime (whatever endpoint serves the model calls) needs to:
+- Read context (maintenance_requests, tenants, leases, etc.) — read-only, can go through cookie-bound client
+- Write to ai_logs — through admin client (existing pattern via logAiAction)
+- Write to `maintenance_requests.ai_triage` jsonb — currently the triage-actions.ts uses the cookie-bound client. Cross-check that the staff user has write permission on maintenance_requests (they do via `maintenance_requests_update` policy).
+
+**No new service-role bypass paths needed for AI surfaces** that follow the maintenance-triage pattern. The admin-client usage is contained to `logAiAction` (existing B.x bypass).
+
+**`is_ai_actor()` RESTRICTIVE policy** is the only new RLS surface. Per §13.9 it gets added to `rent_charges` + `payments`. If lean D4 holds (no AI write paths to financial tables — passive enforcement), the RESTRICTIVE policy is still useful as defense-in-depth ("even if a future migration accidentally introduces an AI write path, the RESTRICTIVE policy blocks it").
+
+## What Section 3 does NOT do (deliberately)
+
+- Lock the LLM vendor choice
+- Lock the first-surface choice (triage replacement vs. other)
+- Lock the `is_ai_actor()` detection mechanism
+- Lock cost-tracking column inclusion
+- Lock the prompt injection protection strategy
+- Author PHASE_6_PLAN.md
+- Decide whether AI engine ships in Phase 6 or a later phase (Section 1's strategic question)
+- Pick between Frame 1 / 2 / 3 from Section 1
+- Make business decisions (free tier, gating, cost-per-org)
+
+That work happens in a future session with **partner feedback signal in hand**.
+
+---
+
+**Stopping here.** Section 3 cataloged for the Phase 6 AI engine candidate. The major reframing — that most of the gate + log + placeholder infrastructure already exists — should make the future planning conversation more honest about scope. Section 2 of this same file contains two claims that need amendment in light of these findings (canRunAutomationAction already exists; AI_AUTOMATION_SAFETY.md already exists).
+
+---
+
+# Section 4 — Inspections design space catalog
+
+> **Added 2026-05-24. Scratch work, NOT a locked plan. Input for a future PHASE_6_PLAN.md authoring session with partner feedback signal in hand.**
+>
+> Scope: this section dives into **just** the Inspections candidate (Candidate E from Section 1). It does NOT decide whether Inspections is the right Phase 6 first move — that's still a Section 1 strategic question.
+
+## Key read-first findings
+
+- **No inspection tables exist** in any migration. SPEC lines 324-325 list `inspections` and `inspection_items` as expected tables, but they were NOT scaffolded in Phase 1. Inspections is **clean greenfield** — no schema, no enum, no policies, no UI, no routes.
+- **`work_order_photos` is the precedent pattern** (migration `20260519000400_work_orders.sql`, RLS in `20260519000800_phase2_rls.sql:256-285`, storage bucket in `20260519000900_storage.sql`, photo actions in `src/app/(app)/work-orders/photo-actions.ts`). The pattern is mature and directly transferable.
+- **Lease lifecycle hook points**: lease_status enum is `upcoming | active | ended` (migration `20260521000100_phase3_leases.sql:42`). Three lifecycle events:
+  - **Lease creation** via `create_lease_with_tenants` RPC (`src/app/(app)/leases/actions.ts:40` + applications conversion at `actions.ts:411`)
+  - **Lease ending** via `endLease()` action at `src/app/(app)/leases/actions.ts:180`
+  - **`upcoming → active` transition** — no explicit "activateLease" action found; status likely flips via date-driven cron or manual edit (not yet built)
+- **No `move_in_pending` / `move_out_pending` intermediate lease states** — inspection workflow must thread through existing 3-state enum, not add to it.
+- **`/app/inspections` route is reserved** (SPEC line 605) but not built.
+
+## SPEC verbatim grounding
+
+The entire SPEC inspections section is **4 lines**:
+
+```
+### INSPECTIONS
+- Move-in/out
+- Checklists
+- Photos
+```
+
+SPEC line 285 lists Inspections as a top-level module. SPEC line 324-325 names the two tables. SPEC line 564 places it in Phase 6 ("Automations + AI + inspections + amenities"). SPEC line 605 reserves the `/app/inspections` route. **That is the entire SPEC guidance for inspections** — extremely sparse, leaving most decisions open.
+
+Implications:
+- No checklist taxonomy is prescribed (kitchen / bathroom / bedroom areas? Or freeform?)
+- No condition vocabulary is prescribed (good/fair/poor/damaged? 1-5 stars? Pass/fail?)
+- No signature / sign-off workflow is prescribed
+- No tenant participation is prescribed (does the tenant co-sign? Get a copy?)
+- No periodic inspection cadence is prescribed (annual? quarterly? on-demand only?)
+- No move-in vs move-out distinction is prescribed (same table with type column? Separate tables?)
+
+**This is the slimmest SPEC surface of any Phase 6 candidate.** Most of the design space is greenfield.
+
+## A. Data model — design space
+
+### A1: Single inspections table + items child table (SPEC literal)
+
+```sql
+inspections (
+  id uuid PRIMARY KEY,
+  organization_id uuid NOT NULL,
+  lease_id uuid REFERENCES leases(id),
+  property_id uuid NOT NULL,
+  unit_id uuid REFERENCES units(id),
+  type public.inspection_type NOT NULL,    -- enum: move_in | move_out | periodic
+  status public.inspection_status NOT NULL, -- enum: scheduled | in_progress | completed | reviewed
+  scheduled_at timestamptz,
+  performed_at timestamptz,
+  performed_by uuid REFERENCES users(id),
+  reviewed_by uuid REFERENCES users(id),
+  reviewed_at timestamptz,
+  notes text,
+  tenant_acknowledgment text, -- "signed" | "declined" | null
+  tenant_acknowledged_at timestamptz,
+  created_at, updated_at
+)
+
+inspection_items (
+  id uuid PRIMARY KEY,
+  organization_id uuid NOT NULL,
+  inspection_id uuid NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+  area text NOT NULL,            -- "kitchen" | "bathroom" | etc. — controlled vocab via enum or freeform?
+  item_name text,                -- "stove" | "refrigerator" | etc. — within area
+  condition public.condition_rating NOT NULL, -- enum: good | fair | poor | damaged
+  notes text,
+  needs_repair boolean DEFAULT false,
+  estimated_repair_cost numeric(12,2),
+  position int NOT NULL,         -- ordering within inspection
+  created_at, updated_at
+)
+```
+
+This is the SPEC-literal shape. Matches §8.1 (org-id-pinned tables, parent FK with org column) precedent.
+
+### A2: Single flat table with JSONB items column
+
+```sql
+inspections (
+  ..., 
+  items jsonb NOT NULL DEFAULT '[]'::jsonb  -- array of {area, item_name, condition, notes, needs_repair}
+)
+```
+
+Pros: simpler schema; faster reads (one row); easier to template-drive (load a JSONB template).
+Cons: photos can't FK to individual items; harder to query "all kitchens rated poor across portfolio"; harder for reports.
+
+### A3: Items table + checklist_templates table
+
+Pros: org admins can define their own inspection checklists; inspections instantiate from a template.
+Cons: more tables; template-versioning question (does editing a template affect past inspections?).
+
+### A4: Photos foreign-key strategy
+
+Photos must attach to either:
+- **A4a**: the `inspection` (one bucket of photos per inspection, no item-level FK)
+- **A4b**: the `inspection_item` (each kitchen sink rating has its own photos)
+- **A4c**: both (inspection-level for overall + item-level for specific issues)
+
+`work_order_photos` precedent: FKs only to `work_orders`, no sub-entity. Suggests A4a is simplest. But inspections are more granular than work orders ("rate every fixture in every room") and item-level photos are common in this domain. **Surface for decision.**
+
+## B. Photo capture
+
+### B1: Reuse `work-order-photos` bucket vs. new `inspection-photos` bucket
+
+Reuse:
+- Pros: one bucket, one bucket-level config (size, mime types, lifecycle), simpler ops
+- Cons: bucket name no longer descriptive; harder to apply differential retention; harder to grant `inspection_only` storage tokens
+
+Separate bucket (`inspection-photos`):
+- Pros: clear ownership; differential retention possible (e.g., move-in photos retained 7 years for security deposit disputes); separate billing/quota visibility
+- Cons: another bucket to provision; duplicated config
+
+**Lean honest**: separate bucket. Move-out photos are evidence in security deposit disputes — different retention profile from work order photos.
+
+### B2: Mobile-first capture flow
+
+work_order_photos uses standard `<input type="file" accept="image/*">` plus an upload server action (`requestWorkOrderPhotoUpload` → signed URL → client PUT → `recordWorkOrderPhoto`). Same pattern fits inspections.
+
+Open questions:
+- **Mobile camera UX**: PWA install? Native camera invocation? `<input type="file" capture="environment">` for direct camera access?
+- **Offline support**: inspector in basement with no signal — queue photos for later upload? (Probably out of scope for slice 1.)
+- **Multi-photo upload**: one-at-a-time loop (work_order_photos pattern) vs. bulk upload? Inspections have many more photos than work orders.
+
+### B3: Photo metadata extensions beyond work_order_photos
+
+The WO photos table is minimal: `file_path, caption, kind (before/after/general), uploaded_by, created_at`. Inspections might want:
+- EXIF data (timestamp, GPS) — auto-extracted server-side for evidentiary integrity
+- Specific area/item association (per A4b)
+- Photo type beyond before/after/general — e.g., "damage", "general", "context"
+
+## C. Workflow — design space
+
+### C1: Move-in inspection trigger
+
+| Option | When inspection auto-created | Who/how |
+|---|---|---|
+| **C1a** Manual only | Never auto-created | Property manager creates it on-demand |
+| **C1b** On lease creation | `create_lease_with_tenants` RPC creates a scheduled `move_in` inspection | RPC body extension |
+| **C1c** On lease activation | When lease_status flips `upcoming → active` | But there's no explicit activate action today; would need to add one or hook a cron |
+| **C1d** On tenant invite acceptance | When tenant accepts invite | Hook in `accept_tenant_invite` RPC |
+
+**Lean honest**: C1b (auto-schedule on lease creation, status `scheduled`). The inspection is just a placeholder until performed; auto-creating gives staff a visible TODO and prevents the "we forgot to do move-in" failure mode.
+
+### C2: Move-out inspection trigger
+
+| Option | When inspection auto-created |
+|---|---|
+| **C2a** Manual only | Property manager creates it when notified |
+| **C2b** On `endLease()` call | `endLease()` extension — creates a scheduled `move_out` inspection at the end date |
+| **C2c** On move-out notice (not yet built) | Future "move-out notice" entity triggers this |
+
+**Lean honest**: C2b. `endLease()` is the existing hook; adding "create move-out inspection" is one extra insert. The tradeoff: `endLease()` is sometimes called retroactively (lease already ended); auto-creating a move-out inspection then is awkward. Could gate: "create move-out inspection only if end date is in the future."
+
+### C3: Periodic inspection cadence
+
+Out of scope for slice 1? Periodic inspections (annual unit walkthrough, drive-by) are a different workflow — they aren't lease-bound, they're property-bound. Could defer.
+
+### C4: Performer identity
+
+`performed_by uuid REFERENCES users(id)` — only org staff can perform inspections in slice 1. Multi-performer (e.g., property manager + tenant co-sign) is an extension; surface but don't lock.
+
+### C5: Tenant participation
+
+Three options:
+- **C5a**: No tenant participation (manager-only inspection; tenant sees a copy via tenant portal Documents tab)
+- **C5b**: Tenant acknowledgment only (manager performs, tenant clicks "I acknowledge" in tenant portal — boolean flip + timestamp)
+- **C5c**: Tenant co-performs (joint walkthrough, both add notes/photos)
+
+The `tenant_acknowledgment` column in A1 anticipates C5b. SPEC says nothing about tenant participation. **Surface for decision.**
+
+### C6: Sign-off + immutability
+
+Three states after `completed`:
+- **C6a**: Always editable (no sign-off concept; staff edits forever)
+- **C6b**: Sign-off transitions to `reviewed` and locks the inspection (no further edits)
+- **C6c**: Sign-off creates an immutable snapshot (PDF stored to documents) and edits go to a "revised" copy
+
+Move-in/out inspections are legal artifacts in security deposit disputes. **C6b at minimum.** C6c if we want bulletproof evidentiary integrity.
+
+## D. Authorization — design space
+
+### D1: Who creates inspections
+
+Roles: OWNER, MANAGER, LEASING_AGENT, ACCOUNTANT, MAINTENANCE_TECH, STAFF.
+
+Phase 2-5 precedent: maintenance / work orders / leases all use the `isStaff()` gate (any non-tenant, non-vendor, non-investor identity). Same default likely fits here:
+- **D1a**: All staff (any `isStaff()`)
+- **D1b**: MANAGER + OWNER only
+- **D1c**: MANAGER + OWNER + LEASING_AGENT (leasing involvement for move-in/out)
+
+**Lean honest**: D1a default; revisit if scope tightens.
+
+### D2: Who performs (vs creates)
+
+A scheduled inspection has a `performed_by` field. Anyone with the role above can perform. No additional gating in slice 1.
+
+### D3: Edit-after-creation gate
+
+If C6b (sign-off locks), then:
+- Pre-sign-off: anyone who can create can edit
+- Post-sign-off (`reviewed` status): no edits, even by the original performer
+- Exception: only OWNER can "unlock" a reviewed inspection (rare audit override; audit-logged)
+
+### D4: Tenant access (portal)
+
+Tenants need to see inspections of their own units:
+- Tenant-self read policy (Phase 3 precedent: `tenants_select_self`)
+- Filtered to inspections where `inspection.lease_id IN (current tenant's leases)`
+- Read-only
+
+Surface: does the tenant see ALL inspections (including periodic ones during occupancy) or only their move-in / move-out?
+
+### D5: Investor (owner portal) access
+
+Property owners need to see inspections on their owned properties (per Phase 5 §13.6 precedent — owner portal junction-mediated):
+- INVESTOR can SELECT inspections WHERE property_id IN (their property_owners.property_id rows)
+- Likely uses a SECURITY DEFINER helper (`user_can_see_inspection(inspection_id)`) per §13.5 forward invariant — junction-mediated chain walks need helpers to avoid recursion (R1-R7 incident lesson)
+
+### D6: RESTRICTIVE policies
+
+`inspections` and `inspection_items` are not financial tables. `is_ai_actor()` RESTRICTIVE (§13.9 deferral) probably does NOT extend to inspections. But: if AI ever drafts an inspection (e.g., "AI suggests room conditions based on photo recognition"), that's a `suggest` action — gate via `canRunAutomationAction(orgId, "general", "suggest")`, never auto-completes the inspection. Confirm explicitly.
+
+## E. Mid-flight decisions — enumerated for future PHASE_6_PLAN.md lock-in
+
+**NOT picked tonight.** For future planning conversation.
+
+1. **Data shape**: A1 (items table) vs A2 (jsonb) vs A3 (with templates). **Probable lean**: A1, with A3 (templates) deferred to slice 2.
+
+2. **Photos FK strategy**: A4a (inspection-level only) vs A4b (item-level) vs A4c (both). **Probable lean**: A4a in slice 1 (work_order_photos parity, simpler), A4b in slice 2 if needed.
+
+3. **Bucket strategy**: B1 reuse vs separate `inspection-photos` bucket. **Probable lean**: separate bucket (retention profile difference).
+
+4. **Move-in trigger**: C1a manual vs C1b on lease creation vs C1c on activation. **Probable lean**: C1b auto-schedule on lease creation with status='scheduled'.
+
+5. **Move-out trigger**: C2a manual vs C2b on `endLease()`. **Probable lean**: C2b with future-end-date gate.
+
+6. **Tenant participation**: C5a silent / C5b acknowledgment / C5c co-perform. **Probable lean**: C5b acknowledgment in slice 1; C5c never (joint walkthrough is a workflow, not an app feature).
+
+7. **Sign-off model**: C6a always-edit / C6b lock on review / C6c immutable PDF snapshot. **Probable lean**: C6b in slice 1; C6c PDF generation deferred to slice 2 (depends on PDF infrastructure not yet built).
+
+8. **Authorization shape**: D1a all staff / D1b OWNER+MANAGER only / D1c +LA. **Probable lean**: D1a default.
+
+9. **Investor portal access**: D5 — included in slice 1 / deferred. **Probable lean**: include in slice 1 since the owner portal pattern is shipped from Phase 5 and helper precedent (`user_can_see_property`, etc.) is established.
+
+10. **Periodic inspections**: C3 in scope / deferred. **Probable lean**: defer to slice 2. Move-in/out is the SPEC priority.
+
+11. **Condition vocabulary**: enum (`good/fair/poor/damaged`) vs star rating (1-5) vs pass/fail. **Probable lean**: 4-value enum — matches industry convention.
+
+12. **Area vocabulary**: controlled enum (kitchen, bathroom, bedroom, etc.) vs freeform text. **Probable lean**: freeform text with autocomplete suggestions. Controlled enum is brittle across property types (single-family vs multi-family vs commercial).
+
+13. **Tenant portal surface**: new `/tenant-portal/inspections` tab vs combined into Documents tab. **Probable lean**: own tab (matches `/tenant-portal/maintenance` precedent).
+
+14. **AI suggestions integration**: AI condition recommendations based on photos / no AI in inspections slice 1. **Probable lean**: no AI in slice 1; surface as Phase 6 AI engine candidate later.
+
+15. **Cron-driven scheduled reminders**: "Move-in inspection due tomorrow" notifications / silent. **Probable lean**: silent in slice 1; defer to Phase 6 automation engine (whose Trigger/Condition/Action structure is the natural home).
+
+## F. File inventory sketch — slice 1
+
+Rough estimate. Assumes lean A1 + A4a + B1-separate-bucket + C1b + C2b + C5b + C6b + D1a + include-investor (D5).
+
+| # | Path | Op | Why |
+|---|---|---|---|
+| 1 | `supabase/migrations/<date>_phase6_inspections.sql` | new | tables, enums (inspection_type, inspection_status, condition_rating), indexes, RLS policies, helper functions for owner-portal access |
+| 2 | `supabase/migrations/<date>_phase6_inspections_storage.sql` | new | inspection-photos bucket (size + mime types) |
+| 3 | `supabase/migrations/<date>_phase6_inspections_lifecycle.sql` | new | Modify `create_lease_with_tenants` RPC to auto-schedule move-in inspection; modify `endLease()` action — but `endLease` is in app code, not RPC, so this migration may only handle the RPC side |
+| 4 | `src/lib/types/database.ts` | edit | regenerated types for new tables/enums |
+| 5 | `src/lib/types/app.ts` | edit | InspectionType, InspectionStatus, ConditionRating exports + display constants |
+| 6 | `src/lib/constants.ts` | edit | `INSPECTION_PHOTO_BUCKET`, INSPECTION_TYPE_META, INSPECTION_STATUS_META, CONDITION_RATING_META |
+| 7 | `src/lib/data/inspections.ts` | new | listInspections, getInspection, computeInspectionSummary |
+| 8 | `src/lib/data/inspection-photos.ts` | new | listInspectionPhotos (parallel to work-order-photos.ts) |
+| 9 | `src/app/(app)/inspections/page.tsx` | new | inspections list view with status filter + type filter |
+| 10 | `src/app/(app)/inspections/[id]/page.tsx` | new | inspection detail view (items grid + photos) |
+| 11 | `src/app/(app)/inspections/[id]/edit/page.tsx` | new | edit-mode form (or inline-edit via dialog — TBD) |
+| 12 | `src/app/(app)/inspections/actions.ts` | new | createInspection, updateInspection, signOffInspection, addInspectionItem, updateInspectionItem |
+| 13 | `src/app/(app)/inspections/photo-actions.ts` | new | requestInspectionPhotoUpload, recordInspectionPhoto, deleteInspectionPhoto |
+| 14 | `src/app/(app)/leases/actions.ts` | edit | `endLease` extension to auto-create move-out inspection |
+| 15 | `src/components/inspections/inspection-detail.tsx` | new | detail view with items grid |
+| 16 | `src/components/inspections/inspection-item-row.tsx` | new | item rendering with condition badge + photo thumbnails |
+| 17 | `src/components/inspections/inspection-photos.tsx` | new | photo grid (mirrors work-order-photos.tsx) |
+| 18 | `src/components/inspections/inspection-photo-uploader.tsx` | new | upload widget |
+| 19 | `src/components/inspections/sign-off-dialog.tsx` | new | sign-off / review confirmation |
+| 20 | `src/components/layout/nav.ts` | edit | activate `/inspections` sidebar entry |
+| 21 | `src/app/tenant-portal/inspections/page.tsx` | new | tenant-portal list view (read-only) |
+| 22 | `src/app/tenant-portal/inspections/[id]/page.tsx` | new | tenant-portal detail with acknowledge button |
+| 23 | `src/app/tenant-portal/inspections/actions.ts` | new | acknowledgeInspection server action |
+| 24 | `src/app/owner-portal/inspections/page.tsx` | new | owner-portal list view (read-only, scoped to owned properties) |
+| 25 | `src/app/owner-portal/inspections/[id]/page.tsx` | new | owner-portal detail (read-only) |
+| 26 | `supabase/tests/rls_phase6_inspections.sql` | new | Suite 16 — full RLS test coverage (~20-30 assertions) |
+| 27 | `RLS_TEST_PLAN.md` | edit | Suite 16 entry + assertion count bump |
+
+**Estimate: ~25-27 files.** Roughly the size of Phase 5 slice 10e (19 files) plus slice 10f (23 files) combined — but conceptually narrower because it's one table family with no cross-domain financial coupling.
+
+## RLS posture surfaced
+
+- **Junction-mediated chain walk**: investor → property_owners → properties → inspections — needs a SECURITY DEFINER helper (`user_can_see_inspection`) per §13.5 forward invariant (recursion lesson R1-R7 from slice 10e). Same pattern as `user_can_see_property` / `user_can_see_unit`.
+- **Tenant-self walk**: tenant → tenants → leases → inspections — also needs helper or careful EXISTS scoping. Tenant→lease relationship is already SECURITY-DEFINER-helper'd from Phase 3 (`tenant_user_owns_lease` precedent).
+- **Photos child table**: `inspection_photos` references `inspections` and inherits access via parent — same precedent as `work_order_photos` (no separate junction needed).
+
+## §8.1 cross-org FK pin
+
+New cross-org FK risks per §8.1 pattern:
+- `inspections.lease_id` → leases — same-org pin (EXISTS subquery)
+- `inspections.property_id` → properties — same-org pin
+- `inspections.unit_id` → units — same-org pin
+- `inspection_items.inspection_id` → inspections — same-org pin
+- `inspection_photos.inspection_id` → inspections — same-org pin
+
+All standard §8.1 pattern. Trigger or constraint approach to be selected at lock-in time.
+
+## Cross-section observations for future planning
+
+- **Inspections may be the simplest Phase 6 candidate to ship** — single domain, well-precedented (work_order_photos is a near-perfect pattern), low cross-cutting risk, no AI dependency, no automation engine dependency.
+- **Inspections has no financial coupling** — unlike Automation engine (could write to rent_charges) or AI engine (could draft messages). No `is_ai_actor()` RESTRICTIVE work needed.
+- **Inspections has natural lease lifecycle integration** — `create_lease_with_tenants` and `endLease()` are already shipping; minor extensions wire move-in / move-out hooks cleanly.
+- **The SPEC sparseness is freedom AND risk**: with 4 lines of SPEC guidance, every design call is ours to make. Faster execution but more rope to hang on. Plan session must lock 14+ decisions before slice authoring.
+
+## What Section 4 does NOT do (deliberately)
+
+- Lock the data shape (A1/A2/A3)
+- Lock photo FK granularity (A4a/b/c)
+- Lock condition vocabulary or area vocabulary
+- Lock sign-off model (C6a/b/c)
+- Decide tenant portal surface granularity
+- Decide whether periodic inspections ship in slice 1
+- Decide AI / cron integration
+- Author PHASE_6_PLAN.md
+- Pick between Frame 1 / 2 / 3 from Section 1
+
+---
+
+**Stopping here.** Section 4 cataloged. Inspections surfaces as a low-risk slice-1 candidate for Phase 6 (less coupled than Automation or AI engines).
+
+---
+
+# Section 5 — Amenities design space catalog
+
+> **Added 2026-05-24. Scratch work, NOT a locked plan. Input for a future PHASE_6_PLAN.md authoring session with partner feedback signal in hand.**
+>
+> Scope: this section dives into **just** the Amenities candidate (Candidate F from Section 1). It does NOT decide whether Amenities is the right Phase 6 first move — that's still a Section 1 strategic question.
+
+## Key read-first findings
+
+- **No `amenities` or `amenity_reservations` tables exist** in any migration. Greenfield Phase 6. SPEC lines 322-323 list both as expected core tables but neither has been scaffolded.
+- **`/amenities` staff nav slot is reserved** at `src/components/layout/nav.ts:79` — `enabled: false`, in "Engagement" section, with `Sparkles` icon. Activating it is one boolean flip.
+- **Tenant portal lives at `src/app/portal/`** (NOT `src/app/tenant-portal/` — that's a non-existent route). Existing portal tabs: Welcome, Rent, Maintenance, Messages (per `src/components/portal/portal-nav.tsx:21-24`). No Amenities tab yet — adding it requires a portal-nav edit + new route directory.
+- **Tenant portal data pattern** (`src/lib/data/tenant-maintenance.ts:1-50`): cookie-bound (anon) client, RLS-enforced self-only access, lease-first chain to derive property/unit, `canSubmit` boolean to gate UI when tenant has no residence resolved. **Direct template for amenity reservation flow.**
+- **Lease lifecycle constraint**: lease_status enum is `upcoming | active | ended` (Phase 3). Amenity access likely requires `active` lease — `upcoming` tenants haven't moved in, `ended` tenants are gone. Surface for decision.
+
+## SPEC verbatim grounding
+
+The entire SPEC amenities section is **3 lines**:
+
+```
+### AMENITIES
+- Reservations
+- Rules
+```
+
+SPEC line 286 lists Amenities as a top-level module. SPEC line 322-323 names the two tables. SPEC line 344 lists Amenities as a required tenant portal tab. SPEC line 564 places it in Phase 6. SPEC line 606 reserves `/app/amenities` for staff.
+
+**Even sparser than Inspections** (which had 4 lines). SPEC says nothing about:
+- What types of amenities exist (pool, gym, community room, parking, EV charging, package locker, ...)
+- Whether amenities are property-scoped or org-scoped
+- Whether reservations are tenant-only or staff-bookable
+- Whether amenities have capacity
+- Pricing — are amenities free / fee-per-use / amenity-fee in rent?
+- Whether non-tenants can book (guests? prospects on tour?)
+- Operating hours
+- Whether rules are advisory (display-only) or enforcement (system rejects bookings violating rules)
+
+**The design space is wider than Inspections.** Almost every decision is ours.
+
+## Accumulated deferrals / cross-section context
+
+From Section 3 (AI) catalog: AI tenant assistant (SPEC line 345) may eventually surface "When's the pool open?" / "Book me the community room for Friday 7pm" voice-to-action. Out of scope for Amenities slice 1, but the data model should not preclude an AI-driven booking path.
+
+From Section 1 (Phase 6 frames): Amenities is one of 4 SPEC-named Phase 6 modules. It's the **least cross-cutting** of the four — no financial coupling, no AI-required surface, no automation engine dependency. Strong slice-1 candidate by simplicity.
+
+## A. Data model — design space
+
+### A1: Two-table SPEC-literal shape
+
+```sql
+amenities (
+  id uuid PRIMARY KEY,
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  property_id uuid REFERENCES properties(id) ON DELETE CASCADE,  -- NULL = org-wide?
+  name text NOT NULL,
+  type public.amenity_type NOT NULL,         -- enum: pool | gym | community_room | parking | laundry | other
+  description text,
+  capacity int NOT NULL DEFAULT 1,           -- max concurrent occupants per slot
+  rules_text text,                            -- markdown rules display
+  operating_hours jsonb,                      -- {mon: [{from,to}], tue: [...], ...} OR a separate table
+  slot_duration_minutes int NOT NULL DEFAULT 60,
+  max_advance_days int NOT NULL DEFAULT 14,
+  min_advance_hours int NOT NULL DEFAULT 0,
+  cancellation_window_hours int NOT NULL DEFAULT 2,
+  reservation_mode public.reservation_mode NOT NULL DEFAULT 'auto_approve',  -- auto_approve | manager_approve
+  fee_amount numeric(12,2),                   -- nullable; null = free
+  fee_per public.fee_per,                     -- nullable: 'reservation' | 'hour' — only if fee_amount set
+  active boolean NOT NULL DEFAULT true,
+  created_at, updated_at
+)
+
+amenity_reservations (
+  id uuid PRIMARY KEY,
+  organization_id uuid NOT NULL,
+  amenity_id uuid NOT NULL REFERENCES amenities(id) ON DELETE CASCADE,
+  tenant_id uuid REFERENCES tenants(id) ON DELETE SET NULL,
+  booked_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  start_at timestamptz NOT NULL,
+  end_at timestamptz NOT NULL,
+  status public.reservation_status NOT NULL DEFAULT 'pending',
+  -- enum: pending | confirmed | cancelled | no_show | completed
+  guest_count int NOT NULL DEFAULT 1,
+  notes text,
+  cancellation_reason text,
+  cancelled_at timestamptz,
+  cancelled_by_user_id uuid REFERENCES users(id),
+  created_at, updated_at,
+  CONSTRAINT reservation_time_valid CHECK (end_at > start_at)
+)
+```
+
+### A2: Three-table shape (separate `amenity_rules` table)
+
+Pros: rules become structured (each rule a row → orderable, can have per-rule acknowledgment); easier to localize per rule.
+Cons: more tables; rules are usually display-only markdown — overkill.
+
+**Lean honest**: A1 with `rules_text` as markdown column. A2 if rules ever need per-rule acknowledgment ("I accept the pool rules" checkbox).
+
+### A3: Operating hours — column vs separate table
+
+| Option | Description |
+|---|---|
+| **A3a** JSONB column | `operating_hours jsonb` with day-of-week keys. Simple, single row read. |
+| **A3b** Separate table | `amenity_operating_hours (amenity_id, day_of_week, open_time, close_time)` — clean relational model. |
+| **A3c** Hard-coded "always open" + blackout exceptions | Simplest: amenity is bookable 24/7 by default; `amenity_blackouts (amenity_id, starts_at, ends_at, reason)` overrides. |
+
+**Lean honest**: A3c. Many amenities (gym with key fob access, parking spaces) are effectively 24/7. Operating hours as the exception, not the rule. Blackout table doubles as maintenance closure mechanism.
+
+### A4: Conflict resolution (no double-booking) — DB vs app layer
+
+| Option | Description |
+|---|---|
+| **A4a** App-layer check | Server action queries existing reservations for the time window, denies if overlap |
+| **A4b** EXCLUDE constraint | `EXCLUDE USING gist (amenity_id WITH =, tstzrange(start_at, end_at) WITH &&) WHERE (status IN ('pending','confirmed'))` — Postgres-native non-overlapping time range constraint |
+| **A4c** Both (defense in depth) | App-layer check for user-friendly error message; DB constraint as backstop |
+
+**Lean honest**: A4c. The EXCLUDE constraint is bulletproof against race conditions (two clicks at the same instant). The app-layer check exists for UX — return "That slot is taken" before the DB error. Requires `btree_gist` extension.
+
+Edge case: capacity > 1 amenities (pool deck for 20 people). Strict EXCLUDE constraint doesn't fit. **Surface for decision.** Slice 1 may ship single-capacity only.
+
+### A5: Tenant identity FK
+
+`amenity_reservations.tenant_id REFERENCES tenants(id)` — but staff can also book. Three options:
+- **A5a**: `tenant_id` NULL allowed; `booked_by_user_id` NOT NULL (always set to booker)
+- **A5b**: Separate `staff_booking boolean` flag
+- **A5c**: Polymorphic — `booker_type ('tenant' | 'staff')` + matching FK column
+
+**Lean honest**: A5a. `tenant_id` nullable, `booked_by_user_id` always set. Staff bookings have `tenant_id = NULL`. Clean and avoids polymorphism.
+
+## B. Reservation rules — design space
+
+### B1: Time block granularity
+
+Per-amenity `slot_duration_minutes`:
+- **B1a** Fixed grid (slot_duration_minutes determines bookable slot boundaries) — e.g., 60-min slots only at 9:00 / 10:00 / 11:00
+- **B1b** Floating start (any minute is a valid start; duration enforced) — pool deck at 9:15-10:15 is OK
+- **B1c** Multi-slot (book N consecutive slots) — book 9-11 by reserving two 60-min slots
+
+**Lean honest**: B1a in slice 1 (simpler UI, fewer edge cases). B1c later if needed.
+
+### B2: Advance booking window
+
+Per-amenity `max_advance_days` and `min_advance_hours`. **Universally needed**. Lock in slice 1.
+
+### B3: Per-tenant quota (rate limits)
+
+- **B3a** No quota — first come first served
+- **B3b** Per-tenant per-amenity per-rolling-7-day count cap
+- **B3c** Per-tenant per-day across all amenities
+
+**Lean honest**: B3a in slice 1. Add B3b in slice 2 if abuse emerges.
+
+### B4: Cancellation policy
+
+`cancellation_window_hours`: must cancel at least N hours before start_at. Simple window enforcement. No late-cancel fees in slice 1.
+
+### B5: Blackout periods
+
+`amenity_blackouts (amenity_id, starts_at, ends_at, reason, created_by)` table. Universally needed.
+
+### B6: Rules enforcement vs display
+
+- **B6a** Rules are display text shown before/after booking; not enforced by system
+- **B6b** Rules are enforcement constraints
+
+**Lean honest**: B6a in slice 1. Rules as `rules_text` markdown column displayed prominently. B6b structured-rule enforcement is a deep rabbit hole.
+
+## C. Workflow — design space
+
+### C1: Reservation mode (auto-approve vs manager-confirm)
+
+Per `amenities.reservation_mode`:
+- **C1a** `auto_approve` — tenant submits → status `confirmed` immediately (subject to A4 conflict + B5 blackout + B4 window)
+- **C1b** `manager_approve` — tenant submits → status `pending` → manager confirms or denies
+
+**Lean honest**: column allows both, defaults to `auto_approve`. Both modes shipped in slice 1.
+
+### C2: Reservation creation entry points
+
+| Entry | Path |
+|---|---|
+| Tenant via portal | `/portal/amenities` → select amenity → pick slot → submit |
+| Staff via admin | `/amenities/[id]` → admin booking form |
+
+### C3: Calendar view (staff)
+
+Manager-facing calendar: day / week / month view; filter by amenity / by status. **Open question**: integration with `react-big-calendar` or build minimal grid? Slice 1 could ship a simple list-grouped-by-date.
+
+### C4: Tenant cancellation flow
+
+- `/portal/amenities` shows "My reservations" list
+- Each future reservation has Cancel button (gated by `cancellation_window_hours`)
+- Past reservations show as "completed"
+- Audit log entry per cancellation
+
+### C5: No-show handling
+
+- **C5a** Auto-flip to `completed` via cron / on next staff visit
+- **C5b** Staff manually marks `no_show` after the fact
+- **C5c** Ignore — completed reservations have no operational consequence
+
+**Lean honest**: C5a (auto-flip to `completed` for retention/reporting). Defer no-show tracking to slice 2.
+
+### C6: Notification triggers
+
+Slice 1 may skip emails entirely (tenant sees status in portal). Email integration is a separate scope.
+
+## D. Authorization — design space
+
+### D1: Role matrix
+
+| Action | OWNER | MANAGER | LA | ACCOUNTANT | MAINTENANCE_TECH | TENANT | INVESTOR |
+|---|---|---|---|---|---|---|---|
+| amenities CREATE/UPDATE/DELETE | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| amenity_blackouts CREATE | ✓ | ✓ | ✗ | ✗ | ✓ (maintenance closures) | ✗ | ✗ |
+| amenities READ (staff list) | ✓ | ✓ | read-only | read-only | read-only | ✗ | ✗ |
+| amenity_reservations CREATE (self) | ✓ | ✓ | ✗ | ✗ | ✗ | ✓ (active lease only) | ✗ |
+| amenity_reservations CREATE (any) | ✓ | ✓ | ✓? | ✗ | ✗ | ✗ | ✗ |
+| amenity_reservations READ (all org) | ✓ | ✓ | ✓ | ✗ | ✓ (own bookings) | ✗ (own only) | ✗ |
+| amenity_reservations READ (own) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| amenity_reservations CANCEL (own) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ (own + window) | ✗ |
+| amenity_reservations CANCEL (any) | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+
+### D2: Tenant-self gate (key authz invariant)
+
+For tenants to book, they must have an `active` lease. Helper precedent: Phase 3 tenant-self RLS chain.
+- Tenant booking creates `amenity_reservations` row with `tenant_id = (self)`
+- Constraint: tenant's lease must be `active` AND amenity's `property_id` must match tenant's lease property
+- Probably enforced via SECURITY DEFINER helper (`tenant_can_book_amenity(amenity_id)`) per §13.5 forward invariant
+
+### D3: Cross-property reservations
+
+If a tenant lives at Property A, can they book Property B's pool? **Surface for decision** — defaults to property-scoped (D3a) with future expansion option.
+
+### D4: AI/automation gate (forward-looking)
+
+If AI assistant ever books amenities on behalf of a tenant — would require extending `AutomationActionType` enum. For now: AI cannot book. Defer.
+
+## E. Mid-flight decisions — enumerated for future PHASE_6_PLAN.md lock-in
+
+**NOT picked tonight.**
+
+1. **Data shape**: A1 two-table / A2 three-table (separate rules). **Probable lean**: A1.
+
+2. **Operating hours model**: A3a JSONB / A3b separate table / A3c always-open + blackouts. **Probable lean**: A3c.
+
+3. **Conflict resolution**: A4a app-only / A4b EXCLUDE constraint / A4c both. **Probable lean**: A4c. Requires `btree_gist` extension migration.
+
+4. **Capacity handling**: single-capacity only / multi-capacity in slice 1. **Probable lean**: single-capacity (capacity=1) only in slice 1. Multi-capacity deferred to slice 2.
+
+5. **Time block model**: B1a fixed grid / B1b floating start / B1c multi-slot. **Probable lean**: B1a in slice 1.
+
+6. **Per-tenant quotas**: B3a none / B3b per-amenity-per-week / B3c per-day-across-amenities. **Probable lean**: B3a (no quotas) in slice 1.
+
+7. **Rules paradigm**: B6a display-only markdown / B6b structured enforcement. **Probable lean**: B6a in slice 1. B6b deferred indefinitely.
+
+8. **Reservation mode default**: auto_approve / manager_approve. **Probable lean**: per-amenity column with default `auto_approve`. Both modes shipped in slice 1.
+
+9. **No-show handling**: C5a auto-flip / C5b manual / C5c ignore. **Probable lean**: C5a in slice 1.
+
+10. **Notification emails**: skip in slice 1 / include. **Probable lean**: skip — portal status visibility is enough.
+
+11. **Fees**: no fees in slice 1 / amenity fee per reservation / amenity-fee in rent. **Probable lean**: schema has nullable `fee_amount` + `fee_per` columns but slice 1 never charges. Schema is forward-compatible.
+
+12. **Cross-property amenities**: property-scoped only / org-wide allowed. **Probable lean**: `amenities.property_id` NOT NULL in slice 1.
+
+13. **Calendar view**: list grouped by date / library-based calendar. **Probable lean**: list grouped by date in slice 1.
+
+14. **Tenant portal location**: new `/portal/amenities` tab. **Probable lean**: yes, plus update `src/components/portal/portal-nav.tsx` to add entry.
+
+15. **Eligibility model**: active lease required to book / no gate. **Probable lean**: active lease required (D2 helper).
+
+16. **Investor visibility**: include / defer. **Probable lean**: defer. Amenities are operational, not financial.
+
+17. **AI-driven booking**: forward-design now / ignore. **Probable lean**: ignore for now; ensure schema doesn't preclude later integration.
+
+## F. File inventory sketch — slice 1
+
+Rough estimate. Assumes lean A1 + A3c + A4c + single-capacity + B1a + B3a + B6a + C5a + no fees + property-scoped + auto/manager modes both + active-lease gate.
+
+| # | Path | Op | Why |
+|---|---|---|---|
+| 1 | `supabase/migrations/<date>_phase6_amenities.sql` | new | `btree_gist` extension; tables (amenities, amenity_reservations, amenity_blackouts); enums (amenity_type, reservation_mode, reservation_status); indexes; check constraints; EXCLUDE constraint; helper functions (tenant_can_book_amenity) |
+| 2 | `supabase/migrations/<date>_phase6_amenities_rls.sql` | new | RLS policies (full matrix per D1) |
+| 3 | `src/lib/types/database.ts` | edit | regenerated types |
+| 4 | `src/lib/types/app.ts` | edit | AmenityType, ReservationMode, ReservationStatus exports |
+| 5 | `src/lib/constants.ts` | edit | AMENITY_TYPE_META, RESERVATION_STATUS_META, etc. |
+| 6 | `src/lib/data/amenities.ts` | new | listAmenities, getAmenity, listAmenitySlots |
+| 7 | `src/lib/data/amenity-reservations.ts` | new | listReservations, getReservation, listTenantReservations |
+| 8 | `src/lib/data/amenity-blackouts.ts` | new | listBlackouts |
+| 9 | `src/app/(app)/amenities/page.tsx` | new | staff list view |
+| 10 | `src/app/(app)/amenities/[id]/page.tsx` | new | staff detail view |
+| 11 | `src/app/(app)/amenities/actions.ts` | new | createAmenity, updateAmenity, deleteAmenity, createBlackout, deleteBlackout |
+| 12 | `src/app/(app)/amenities/reservation-actions.ts` | new | createReservationStaff, approveReservation, denyReservation, cancelReservationStaff, markCompleted |
+| 13 | `src/components/amenities/amenity-form-sheet.tsx` | new | create/edit amenity sheet |
+| 14 | `src/components/amenities/amenity-detail.tsx` | new | detail view tab container |
+| 15 | `src/components/amenities/amenity-reservations-list.tsx` | new | staff reservations list grouped by date |
+| 16 | `src/components/amenities/amenity-blackouts-list.tsx` | new | blackout management |
+| 17 | `src/app/portal/amenities/page.tsx` | new | tenant portal list view |
+| 18 | `src/app/portal/amenities/[id]/page.tsx` | new | tenant amenity detail + booking flow |
+| 19 | `src/app/portal/amenities/actions.ts` | new | createTenantReservation, cancelTenantReservation |
+| 20 | `src/components/portal/tenant-amenities-view.tsx` | new | tenant portal amenity browse |
+| 21 | `src/components/portal/tenant-reservation-form.tsx` | new | booking widget |
+| 22 | `src/components/portal/portal-nav.tsx` | edit | add Amenities tab |
+| 23 | `src/components/layout/nav.ts` | edit | flip `/amenities` to `enabled: true` |
+| 24 | `supabase/tests/rls_phase6_amenities.sql` | new | Suite 17 — RLS coverage (~25-35 assertions) |
+| 25 | `RLS_TEST_PLAN.md` | edit | Suite 17 entry + assertion count bump |
+
+**Estimate: ~23-25 files.** Slightly smaller than Inspections. Conceptually narrower domain.
+
+## RLS posture surfaced
+
+- **Tenant-self book gate**: `tenant_can_book_amenity(amenity_id)` SECURITY DEFINER helper verifies (a) caller is tenant with active lease, (b) lease.property_id == amenity.property_id. Mirrors §13.5 forward invariant.
+- **No financial coupling**: `is_ai_actor()` RESTRICTIVE policy (§13.9 deferral) does NOT need to extend to amenities tables.
+- **No junction-table portal isolation**: unlike Phase 5 owner portal, amenities don't introduce a new junction. Tenants reach amenities via existing tenants→leases→properties→amenities chain.
+- **EXCLUDE constraint enforcement**: independent of RLS. Tested at SQL layer (suite 17) with insert attempts.
+
+## §8.1 cross-org FK pin
+
+- `amenities.property_id` → properties — same-org pin
+- `amenity_reservations.amenity_id` → amenities — same-org pin
+- `amenity_reservations.tenant_id` → tenants — same-org pin (when not null)
+- `amenity_blackouts.amenity_id` → amenities — same-org pin
+
+All standard §8.1 pattern.
+
+## Cross-section observations
+
+- **Amenities may be the cleanest slice-1 candidate** of the 4 Phase 6 modules — no AI dependency, no automation engine dependency, no financial coupling, well-precedented (tenant portal pattern from Phase 3), and the EXCLUDE-constraint approach is a single proven Postgres feature.
+- **Comparison ranking by slice-1 risk** (lowest to highest):
+  1. **Amenities** — narrowest scope, cleanest precedent, single Postgres extension
+  2. **Inspections** — broader scope but mature work_order_photos precedent
+  3. **AI engine** — most infrastructure exists already, but vendor + key + cost decisions are real
+  4. **Automation engine** — most cross-cutting (touches every domain), highest design risk
+- **Phase 6 ordering implication for planning**: shipping Amenities first lets the team learn the Phase 6 cadence on a low-risk slice before tackling Automation engine.
+
+## What Section 5 does NOT do (deliberately)
+
+- Lock data shape (A1/A2/A3)
+- Lock conflict resolution mechanism (A4)
+- Lock capacity handling
+- Decide fees inclusion
+- Lock notification email integration
+- Pick calendar library
+- Author PHASE_6_PLAN.md
+- Decide slice-1 ordering across Phase 6 modules
+
+---
+
+**Stopping here.** Section 5 cataloged. Amenities surfaces as a strong slice-1 candidate by simplicity ranking.
