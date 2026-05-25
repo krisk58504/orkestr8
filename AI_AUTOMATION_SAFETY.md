@@ -89,6 +89,15 @@ or automation runs until a human explicitly raises the mode.
   from the report's current data. Same Claude Sonnet model, same
   cost-tracking, same 10/min/org rate limit (shared quota with triage
   and property summaries).
+- Maintenance request vendor suggestions on `/maintenance/[id]` —
+  staff-facing, `suggest` action type. Suggests up to 3 ranked vendors
+  based on request category + vendor trade + last-90-day performance.
+  Same Claude Sonnet model, same cost-tracking, same 10/min/org rate
+  limit (shared quota with all other AI surfaces). Includes a post-Zod
+  vendor_id whitelist check at the orchestrator — LLM-hallucinated
+  vendor UUIDs are filtered out before persistence; if filtering leaves
+  zero suggestions, the call fails closed with `invalid_suggestions`
+  reason.
 
 **Model in use**:
 - Provider: Anthropic via `@ai-sdk/anthropic` 3.x

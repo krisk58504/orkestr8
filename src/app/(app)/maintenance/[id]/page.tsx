@@ -21,7 +21,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { MaintenanceTriageCard } from "@/components/maintenance/maintenance-triage-card";
+import { VendorSuggestionCard } from "@/components/maintenance/vendor-suggestion-card";
 import type { MaintenanceTriageResult } from "@/lib/ai/maintenance-triage";
+import type { VendorSuggestionResult } from "@/lib/ai/vendor-suggestion";
 import { isStaff } from "@/lib/auth/roles";
 import { getSessionContext } from "@/lib/auth/session";
 import {
@@ -60,6 +62,9 @@ export default async function MaintenanceRequestDetailPage({
   const priorityMeta = MAINTENANCE_PRIORITY_META[request.priority];
   const triage =
     (request.ai_triage as unknown as MaintenanceTriageResult | null) ?? null;
+  const vendorSuggestions =
+    (request.ai_vendor_suggestions as unknown as VendorSuggestionResult | null) ??
+    null;
   const canTriage = isStaff(context.roles);
 
   return (
@@ -151,7 +156,7 @@ export default async function MaintenanceRequestDetailPage({
         <CardHeader>
           <CardTitle>AI triage</CardTitle>
           <CardDescription>
-            Placeholder maintenance triage — gated by the AI safety chokepoint
+            Maintenance triage — gated by the AI safety chokepoint
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -163,6 +168,13 @@ export default async function MaintenanceRequestDetailPage({
           />
         </CardContent>
       </Card>
+
+      <VendorSuggestionCard
+        requestId={request.id}
+        initialSuggestions={vendorSuggestions}
+        initialGeneratedAt={request.ai_vendor_suggestions_generated_at}
+        canRun={canTriage}
+      />
 
       <Card>
         <CardHeader>

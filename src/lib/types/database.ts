@@ -644,6 +644,8 @@ export type Database = {
           permission_to_enter: boolean;
           ai_triage: Json | null;
           ai_triaged_at: string | null;
+          ai_vendor_suggestions: Json | null;
+          ai_vendor_suggestions_generated_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -664,6 +666,8 @@ export type Database = {
           permission_to_enter?: boolean;
           ai_triage?: Json | null;
           ai_triaged_at?: string | null;
+          ai_vendor_suggestions?: Json | null;
+          ai_vendor_suggestions_generated_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
