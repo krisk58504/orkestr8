@@ -10,9 +10,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { APP_NAME } from "@/lib/constants";
+import type { NavSection } from "./nav";
 import { NavLinks } from "./nav-links";
 
-export function MobileNav() {
+export function MobileNav({ extras }: { extras?: NavSection[] }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -31,7 +32,7 @@ export function MobileNav() {
           {APP_NAME}
         </SheetTitle>
         <div className="px-3 py-4">
-          <NavLinks onNavigate={() => setOpen(false)} />
+          <NavLinks onNavigate={() => setOpen(false)} extras={extras} />
         </div>
       </SheetContent>
     </Sheet>

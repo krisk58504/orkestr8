@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import type { NavSection } from "@/components/layout/nav";
 import {
   isInvestorUser,
   isStaff,
   isTenantUser,
   isVendorUser,
 } from "@/lib/auth/roles";
+import { getOwnerPortalAccess } from "@/lib/auth/permissions";
 import { getAuthUser, getSessionContext } from "@/lib/auth/session";
-import { hasAnyPropertyOwnership } from "@/lib/data/property-owners";
 
 export default async function AppLayout({
   children,
@@ -39,15 +40,33 @@ export default async function AppLayout({
   }
 
   // Compute the dual-mode affordance: show "Switch to owner portal" in the
-  // user menu if this staff user holds an INVESTOR role OR has at least
-  // one property_owners row.
+  // user menu AND the sidebar Portals section if this staff user holds an
+  // INVESTOR role OR has at least one property_owners row.
   const showOwnerPortalLink = isStaff(context.roles)
-    ? isInvestorUser(context.roles) ||
-      (await hasAnyPropertyOwnership(
-        context.authUserId,
-        context.organization.id,
-      ))
+    ? await getOwnerPortalAccess(context)
     : false;
+
+  // Slice 11e Promote-Both: surface the affordance in the sidebar as a
+  // dedicated "Portals" section. The user menu link stays in place too —
+  // both affordances coexist so dropdown-trained users don't regress.
+  // icon is a STRING key (not the LucideIcon component) — function
+  // references cannot be serialized across the Server → Client Component
+  // boundary. NavLinks resolves the key via its ICON_MAP at render time.
+  const navExtras: NavSection[] = showOwnerPortalLink
+    ? [
+        {
+          title: "Portals",
+          items: [
+            {
+              label: "Owner Portal",
+              href: "/owner-portal",
+              icon: "briefcase",
+              enabled: true,
+            },
+          ],
+        },
+      ]
+    : [];
 
   return (
     <div className="flex min-h-screen">
@@ -55,11 +74,15 @@ export default async function AppLayout({
           (and any future print-styled surfaces) render edge-to-edge.
           Print precedent set in slice 10d. */}
       <div className="print:hidden">
-        <Sidebar />
+        <Sidebar extras={navExtras} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="print:hidden">
-          <Topbar context={context} showOwnerPortalLink={showOwnerPortalLink} />
+          <Topbar
+            context={context}
+            showOwnerPortalLink={showOwnerPortalLink}
+            navExtras={navExtras}
+          />
         </div>
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 print:p-0">
           {children}

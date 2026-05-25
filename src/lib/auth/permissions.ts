@@ -12,8 +12,37 @@
  */
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isInvestorUser } from "@/lib/auth/roles";
+import { hasAnyPropertyOwnership } from "@/lib/data/property-owners";
 import type { Database } from "@/lib/types/database";
-import type { AiMode } from "@/lib/types/app";
+import type { AiMode, SessionContext } from "@/lib/types/app";
+
+/**
+ * Should the current user see owner-portal affordances?
+ *
+ * Returns true when the user has the INVESTOR role OR holds at least
+ * one property_owners row in the current org. Identity-agnostic per
+ * Phase 5 §0.5 decision 4 (dual-mode access — a single user can hold
+ * both staff and owner-portal identities).
+ *
+ * This helper does NOT gate on isStaff. Callers (e.g. `(app)/layout`)
+ * combine with isStaff to decide whether to show the "switch to owner
+ * portal" affordance in the staff app. Pure INVESTOR-only users are
+ * redirected directly into /owner-portal by the same layout, so they
+ * never need this affordance.
+ *
+ * Replaces the inline computation previously duplicated in
+ * src/app/(app)/layout.tsx and src/app/owner-portal/layout.tsx.
+ */
+export async function getOwnerPortalAccess(
+  context: SessionContext,
+): Promise<boolean> {
+  if (isInvestorUser(context.roles)) return true;
+  return hasAnyPropertyOwnership(
+    context.authUserId,
+    context.organization.id,
+  );
+}
 
 export type AutomationModule =
   | "maintenance"

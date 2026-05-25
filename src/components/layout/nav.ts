@@ -27,10 +27,19 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+/**
+ * NavItem.icon accepts either a LucideIcon component (used by the
+ * static NAV_SECTIONS below — bundled with the client component) OR
+ * a string key (used by per-request dynamic items passed in via the
+ * `extras` prop from a server component, which cannot serialize
+ * function references across the RSC boundary).
+ *
+ * String keys resolve via ICON_MAP inside nav-links.tsx.
+ */
 export type NavItem = {
   label: string;
   href: string;
-  icon: LucideIcon;
+  icon: LucideIcon | string;
   enabled: boolean;
 };
 

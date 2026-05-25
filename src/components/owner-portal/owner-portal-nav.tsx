@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, PieChart, type LucideIcon } from "lucide-react";
+import {
+  ArrowLeftRight,
+  Briefcase,
+  PieChart,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type OwnerNavItem = {
@@ -22,7 +27,18 @@ const OWNER_NAV_ITEMS: OwnerNavItem[] = [
   },
 ];
 
-export function OwnerPortalNav() {
+/**
+ * Slice 11e Promote-Owner: when the user holds a staff role in addition
+ * to owner-portal access, render a "Staff app" cross-context link with
+ * a visual divider separating it from the primary tabs. Mirrors the
+ * existing user-menu "Switch to staff app" affordance — both coexist
+ * so dropdown-trained users don't regress.
+ */
+export function OwnerPortalNav({
+  showStaffAppLink = false,
+}: {
+  showStaffAppLink?: boolean;
+}) {
   const pathname = usePathname();
 
   return (
@@ -66,6 +82,22 @@ export function OwnerPortalNav() {
           </Link>
         );
       })}
+
+      {showStaffAppLink ? (
+        <>
+          <div
+            aria-hidden="true"
+            className="mx-2 h-5 w-px shrink-0 bg-border"
+          />
+          <Link
+            href="/dashboard"
+            className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            <ArrowLeftRight className="size-4" />
+            Staff app
+          </Link>
+        </>
+      ) : null}
     </nav>
   );
 }
