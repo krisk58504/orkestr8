@@ -248,6 +248,104 @@ export async function computeTenantBalance(
 }
 
 /**
+ * Tenant-level delinquency aging — the THIRD member of the §7 risk 4
+ * single-source-of-truth balance family (sibling to computeChargeBalance
+ * and computeTenantBalance). Buckets the tenant's open/partial charges
+ * by days-past-due:
+ *
+ *   current      → due_date >= today - 30 days  (0-30 days past due)
+ *   days_30      → today - 60 < due_date <= today - 30 days
+ *   days_60      → today - 90 < due_date <= today - 60 days
+ *   days_90_plus → due_date <= today - 90 days
+ *
+ * Each bucket holds the REMAINING balance (amount_due - sum of non-
+ * refunded payments) — partial payments correctly reduce the bucket
+ * total. Voided + paid charges are excluded.
+ *
+ * Consumed by the slice 10f Rent roll report; future per-tenant views
+ * (statements detail-drill, owner-portal Rent roll) should route
+ * through this rather than reimplementing the bucketing.
+ */
+export async function computeTenantAging(
+  tenantId: string,
+  orgId: string,
+): Promise<{
+  current: number;
+  days_30: number;
+  days_60: number;
+  days_90_plus: number;
+  total_past_due: number;
+} | null> {
+  const supabase = await createClient();
+
+  const { data: openCharges } = await supabase
+    .from("rent_charges")
+    .select("id, amount_due, due_date")
+    .eq("organization_id", orgId)
+    .eq("tenant_id", tenantId)
+    .in("status", ["open", "partial"]);
+
+  const charges = openCharges ?? [];
+  if (charges.length === 0) {
+    return {
+      current: 0,
+      days_30: 0,
+      days_60: 0,
+      days_90_plus: 0,
+      total_past_due: 0,
+    };
+  }
+
+  const { data: payments } = await supabase
+    .from("payments")
+    .select("charge_id, amount_paid")
+    .eq("organization_id", orgId)
+    .in(
+      "charge_id",
+      charges.map((c) => c.id),
+    )
+    .is("refunded_at", null);
+
+  const paidByCharge = new Map<string, number>();
+  for (const p of payments ?? []) {
+    paidByCharge.set(
+      p.charge_id,
+      (paidByCharge.get(p.charge_id) ?? 0) + Number(p.amount_paid),
+    );
+  }
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const todayMs = today.getTime();
+  const DAY_MS = 86_400_000;
+
+  let current = 0;
+  let days_30 = 0;
+  let days_60 = 0;
+  let days_90_plus = 0;
+
+  for (const c of charges) {
+    const remaining =
+      Number(c.amount_due) - (paidByCharge.get(c.id) ?? 0);
+    if (remaining <= 0) continue;
+    const dueMs = new Date(c.due_date).getTime();
+    const daysPastDue = Math.floor((todayMs - dueMs) / DAY_MS);
+    if (daysPastDue >= 90) days_90_plus += remaining;
+    else if (daysPastDue >= 60) days_60 += remaining;
+    else if (daysPastDue >= 30) days_30 += remaining;
+    else current += remaining;
+  }
+
+  return {
+    current,
+    days_30,
+    days_60,
+    days_90_plus,
+    total_past_due: days_30 + days_60 + days_90_plus,
+  };
+}
+
+/**
  * The load-bearing reconciliation helper called out in PHASE_5_PLAN.md §7
  * risk 4. THIS IS THE ONLY per-charge balance-computation helper in the
  * codebase — every view that displays per-charge balance (rent-charges-

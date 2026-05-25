@@ -83,7 +83,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: "Finance",
     items: [
       { label: "Payments", href: "/payments", icon: CreditCard, enabled: true },
-      { label: "Reports", href: "/reports", icon: PieChart, enabled: false },
+      { label: "Reports", href: "/reports", icon: PieChart, enabled: true },
     ],
   },
   {
