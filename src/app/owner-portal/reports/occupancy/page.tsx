@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { getSessionContext } from "@/lib/auth/session";
 import { listOwnerPropertyIds } from "@/lib/data/property-owners";
 import { getOccupancyReport } from "@/lib/data/reports/occupancy";
+import { getLatestReportInsight } from "@/lib/data/report-insights";
+import type { ReportInsightResult } from "@/lib/ai/report-insight";
 
 export const metadata: Metadata = { title: "Occupancy report" };
 
@@ -13,10 +15,8 @@ export default async function OwnerOccupancyReportPage() {
   const context = await getSessionContext();
   if (!context) return null;
 
-  const propertyIds = await listOwnerPropertyIds(
-    context.authUserId,
-    context.organization.id,
-  );
+  const orgId = context.organization.id;
+  const propertyIds = await listOwnerPropertyIds(context.authUserId, orgId);
 
   if (propertyIds.length === 0) {
     return (
@@ -31,8 +31,22 @@ export default async function OwnerOccupancyReportPage() {
     );
   }
 
-  const rows = await getOccupancyReport(context.organization.id, {
-    propertyIds,
-  });
-  return <OccupancyReport rows={rows} backHref="/owner-portal/reports" />;
+  const [rows, insight] = await Promise.all([
+    getOccupancyReport(orgId, { propertyIds }),
+    getLatestReportInsight(orgId, "occupancy"),
+  ]);
+
+  return (
+    <OccupancyReport
+      rows={rows}
+      backHref="/owner-portal/reports"
+      aiInsight={{
+        aiScope: { reportType: "occupancy", propertyIds },
+        initialInsight: insight
+          ? (insight.insight as unknown as ReportInsightResult)
+          : null,
+        initialGeneratedAt: insight?.generated_at ?? null,
+      }}
+    />
+  );
 }

@@ -83,6 +83,12 @@ or automation runs until a human explicitly raises the mode.
   narrative + highlights from last-30-day activity. Same Claude
   Sonnet model, same cost-tracking, same 10/min/org rate limit
   (shared quota with maintenance triage).
+- Report insights on `/reports/*` (staff) and `/owner-portal/reports/*`
+  (INVESTOR-scoped) — `summarize` action type. Generates a per-report
+  insight (headline + key signals + concerns + recommended actions)
+  from the report's current data. Same Claude Sonnet model, same
+  cost-tracking, same 10/min/org rate limit (shared quota with triage
+  and property summaries).
 
 **Model in use**:
 - Provider: Anthropic via `@ai-sdk/anthropic` 3.x

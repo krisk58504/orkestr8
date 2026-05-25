@@ -3,6 +3,10 @@ import { ArrowLeft, Clock, ClipboardList, Wrench } from "lucide-react";
 import { PrintButton } from "@/components/payments/statements/print-button";
 import { DateRangeControls } from "@/components/reports/date-range-controls";
 import { MaintenanceCharts } from "@/components/reports/maintenance-charts";
+import {
+  ReportInsightCard,
+  type ReportInsightCardProps,
+} from "@/components/reports/report-insight-card";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { Button } from "@/components/ui/button";
@@ -24,10 +28,12 @@ export function MaintenanceReport({
   report,
   backHref = "/reports",
   dateRangeBasePath = "/reports/maintenance",
+  aiInsight,
 }: {
   report: MaintenanceReportData;
   backHref?: string;
   dateRangeBasePath?: string;
+  aiInsight?: ReportInsightCardProps;
 }) {
   return (
     <div className="space-y-6">
@@ -48,6 +54,8 @@ export function MaintenanceReport({
         title="Maintenance"
         description="Request volume and work-order completion metrics."
       />
+
+      {aiInsight ? <ReportInsightCard {...aiInsight} /> : null}
 
       <DateRangeControls
         basePath={dateRangeBasePath}

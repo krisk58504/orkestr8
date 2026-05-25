@@ -4,6 +4,8 @@ import { LeasingFunnelReport } from "@/components/reports/leasing-funnel-report"
 import { isStaff } from "@/lib/auth/roles";
 import { getSessionContext } from "@/lib/auth/session";
 import { getLeasingFunnelReport } from "@/lib/data/reports/leasing-funnel";
+import { getLatestReportInsight } from "@/lib/data/report-insights";
+import type { ReportInsightResult } from "@/lib/ai/report-insight";
 
 export const metadata: Metadata = { title: "Leasing funnel" };
 
@@ -29,14 +31,26 @@ export default async function LeasingFunnelReportPage({
   if (!context) return null;
   if (!isStaff(context.roles)) redirect("/dashboard");
 
+  const orgId = context.organization.id;
   const defaults = defaultPeriod();
   const from = isValidDate(sp.from) ? sp.from! : defaults.from;
   const to = isValidDate(sp.to) ? sp.to! : defaults.to;
 
-  const report = await getLeasingFunnelReport(
-    context.organization.id,
-    from,
-    to,
+  const [report, insight] = await Promise.all([
+    getLeasingFunnelReport(orgId, from, to),
+    getLatestReportInsight(orgId, "leasing_funnel"),
+  ]);
+
+  return (
+    <LeasingFunnelReport
+      report={report}
+      aiInsight={{
+        aiScope: { reportType: "leasing_funnel" },
+        initialInsight: insight
+          ? (insight.insight as unknown as ReportInsightResult)
+          : null,
+        initialGeneratedAt: insight?.generated_at ?? null,
+      }}
+    />
   );
-  return <LeasingFunnelReport report={report} />;
 }

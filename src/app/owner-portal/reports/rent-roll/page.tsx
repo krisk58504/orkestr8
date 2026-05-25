@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { getSessionContext } from "@/lib/auth/session";
 import { listOwnerPropertyIds } from "@/lib/data/property-owners";
 import { getRentRollReport } from "@/lib/data/reports/rent-roll";
+import { getLatestReportInsight } from "@/lib/data/report-insights";
+import type { ReportInsightResult } from "@/lib/ai/report-insight";
 
 export const metadata: Metadata = { title: "Rent roll" };
 
@@ -13,10 +15,8 @@ export default async function OwnerRentRollReportPage() {
   const context = await getSessionContext();
   if (!context) return null;
 
-  const propertyIds = await listOwnerPropertyIds(
-    context.authUserId,
-    context.organization.id,
-  );
+  const orgId = context.organization.id;
+  const propertyIds = await listOwnerPropertyIds(context.authUserId, orgId);
 
   if (propertyIds.length === 0) {
     return (
@@ -31,8 +31,22 @@ export default async function OwnerRentRollReportPage() {
     );
   }
 
-  const rows = await getRentRollReport(context.organization.id, {
-    propertyIds,
-  });
-  return <RentRollReport rows={rows} backHref="/owner-portal/reports" />;
+  const [rows, insight] = await Promise.all([
+    getRentRollReport(orgId, { propertyIds }),
+    getLatestReportInsight(orgId, "rent_roll"),
+  ]);
+
+  return (
+    <RentRollReport
+      rows={rows}
+      backHref="/owner-portal/reports"
+      aiInsight={{
+        aiScope: { reportType: "rent_roll", propertyIds },
+        initialInsight: insight
+          ? (insight.insight as unknown as ReportInsightResult)
+          : null,
+        initialGeneratedAt: insight?.generated_at ?? null,
+      }}
+    />
+  );
 }

@@ -4,6 +4,8 @@ import { VendorPerformanceReport } from "@/components/reports/vendor-performance
 import { isStaff } from "@/lib/auth/roles";
 import { getSessionContext } from "@/lib/auth/session";
 import { getVendorPerformanceReport } from "@/lib/data/reports/vendor-performance";
+import { getLatestReportInsight } from "@/lib/data/report-insights";
+import type { ReportInsightResult } from "@/lib/ai/report-insight";
 
 export const metadata: Metadata = { title: "Vendor performance" };
 
@@ -29,14 +31,27 @@ export default async function VendorPerformanceReportPage({
   if (!context) return null;
   if (!isStaff(context.roles)) redirect("/dashboard");
 
+  const orgId = context.organization.id;
   const defaults = defaultPeriod();
   const from = isValidDate(sp.from) ? sp.from! : defaults.from;
   const to = isValidDate(sp.to) ? sp.to! : defaults.to;
 
-  const rows = await getVendorPerformanceReport(
-    context.organization.id,
-    from,
-    to,
+  const [rows, insight] = await Promise.all([
+    getVendorPerformanceReport(orgId, from, to),
+    getLatestReportInsight(orgId, "vendor_performance"),
+  ]);
+
+  return (
+    <VendorPerformanceReport
+      rows={rows}
+      period={{ from, to }}
+      aiInsight={{
+        aiScope: { reportType: "vendor_performance" },
+        initialInsight: insight
+          ? (insight.insight as unknown as ReportInsightResult)
+          : null,
+        initialGeneratedAt: insight?.generated_at ?? null,
+      }}
+    />
   );
-  return <VendorPerformanceReport rows={rows} period={{ from, to }} />;
 }

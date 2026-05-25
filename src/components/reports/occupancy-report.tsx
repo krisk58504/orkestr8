@@ -12,14 +12,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { OccupancyBarChart } from "@/components/reports/occupancy-bar-chart";
+import {
+  ReportInsightCard,
+  type ReportInsightCardProps,
+} from "@/components/reports/report-insight-card";
 import type { OccupancyRow } from "@/lib/data/reports/occupancy";
 
 export function OccupancyReport({
   rows,
   backHref = "/reports",
+  aiInsight,
 }: {
   rows: OccupancyRow[];
   backHref?: string;
+  aiInsight?: ReportInsightCardProps;
 }) {
   const totals = rows.reduce(
     (acc, r) => ({
@@ -74,6 +80,8 @@ export function OccupancyReport({
         title="Occupancy"
         description="Unit occupancy across your portfolio."
       />
+
+      {aiInsight ? <ReportInsightCard {...aiInsight} /> : null}
 
       <div className="grid gap-4 sm:grid-cols-4">
         <StatCard

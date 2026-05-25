@@ -2,6 +2,10 @@ import Link from "next/link";
 import { ArrowLeft, Star, Truck } from "lucide-react";
 import { PrintButton } from "@/components/payments/statements/print-button";
 import { DateRangeControls } from "@/components/reports/date-range-controls";
+import {
+  ReportInsightCard,
+  type ReportInsightCardProps,
+} from "@/components/reports/report-insight-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -29,9 +33,11 @@ function formatRating(r: number | null, count: number): string {
 export function VendorPerformanceReport({
   rows,
   period,
+  aiInsight,
 }: {
   rows: VendorPerformanceRow[];
   period: { from: string; to: string };
+  aiInsight?: ReportInsightCardProps;
 }) {
   return (
     <div className="space-y-6">
@@ -52,6 +58,8 @@ export function VendorPerformanceReport({
         title="Vendor performance"
         description="Per-vendor work orders, resolution time, and ratings."
       />
+
+      {aiInsight ? <ReportInsightCard {...aiInsight} /> : null}
 
       <DateRangeControls
         basePath="/reports/vendor-performance"

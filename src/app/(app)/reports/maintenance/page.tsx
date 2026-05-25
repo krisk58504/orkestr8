@@ -4,6 +4,8 @@ import { MaintenanceReport } from "@/components/reports/maintenance-report";
 import { isStaff } from "@/lib/auth/roles";
 import { getSessionContext } from "@/lib/auth/session";
 import { getMaintenanceReport } from "@/lib/data/reports/maintenance";
+import { getLatestReportInsight } from "@/lib/data/report-insights";
+import type { ReportInsightResult } from "@/lib/ai/report-insight";
 
 export const metadata: Metadata = { title: "Maintenance report" };
 
@@ -29,14 +31,26 @@ export default async function MaintenanceReportPage({
   if (!context) return null;
   if (!isStaff(context.roles)) redirect("/dashboard");
 
+  const orgId = context.organization.id;
   const defaults = defaultPeriod();
   const from = isValidDate(sp.from) ? sp.from! : defaults.from;
   const to = isValidDate(sp.to) ? sp.to! : defaults.to;
 
-  const report = await getMaintenanceReport(
-    context.organization.id,
-    from,
-    to,
+  const [report, insight] = await Promise.all([
+    getMaintenanceReport(orgId, from, to),
+    getLatestReportInsight(orgId, "maintenance"),
+  ]);
+
+  return (
+    <MaintenanceReport
+      report={report}
+      aiInsight={{
+        aiScope: { reportType: "maintenance" },
+        initialInsight: insight
+          ? (insight.insight as unknown as ReportInsightResult)
+          : null,
+        initialGeneratedAt: insight?.generated_at ?? null,
+      }}
+    />
   );
-  return <MaintenanceReport report={report} />;
 }

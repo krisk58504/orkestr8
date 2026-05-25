@@ -10,6 +10,10 @@ import {
 import { PrintButton } from "@/components/payments/statements/print-button";
 import { DateRangeControls } from "@/components/reports/date-range-controls";
 import { LeasingFunnelCharts } from "@/components/reports/leasing-funnel-charts";
+import {
+  ReportInsightCard,
+  type ReportInsightCardProps,
+} from "@/components/reports/report-insight-card";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { Button } from "@/components/ui/button";
@@ -21,8 +25,10 @@ function formatPct(p: number): string {
 
 export function LeasingFunnelReport({
   report,
+  aiInsight,
 }: {
   report: LeasingFunnelReportData;
+  aiInsight?: ReportInsightCardProps;
 }) {
   const stages = [
     {
@@ -76,6 +82,8 @@ export function LeasingFunnelReport({
         title="Leasing funnel"
         description="Leads through conversions for the selected period."
       />
+
+      {aiInsight ? <ReportInsightCard {...aiInsight} /> : null}
 
       <DateRangeControls
         basePath="/reports/leasing-funnel"

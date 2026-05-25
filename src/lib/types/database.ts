@@ -432,6 +432,36 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["automation_logs"]["Insert"]>;
         Relationships: [];
       };
+      report_insights: {
+        Row: {
+          id: string;
+          organization_id: string;
+          report_type: string;
+          scope_filter: Json;
+          insight: Json;
+          model_name: string | null;
+          cost_cents: number | null;
+          tokens_input: number | null;
+          tokens_output: number | null;
+          generated_by: string | null;
+          generated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          report_type: string;
+          scope_filter?: Json;
+          insight: Json;
+          model_name?: string | null;
+          cost_cents?: number | null;
+          tokens_input?: number | null;
+          tokens_output?: number | null;
+          generated_by?: string | null;
+          generated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["report_insights"]["Insert"]>;
+        Relationships: [];
+      };
       vendors: {
         Row: {
           id: string;

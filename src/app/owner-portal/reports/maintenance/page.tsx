@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { getSessionContext } from "@/lib/auth/session";
 import { listOwnerPropertyIds } from "@/lib/data/property-owners";
 import { getMaintenanceReport } from "@/lib/data/reports/maintenance";
+import { getLatestReportInsight } from "@/lib/data/report-insights";
+import type { ReportInsightResult } from "@/lib/ai/report-insight";
 
 export const metadata: Metadata = { title: "Maintenance report" };
 
@@ -30,10 +32,8 @@ export default async function OwnerMaintenanceReportPage({
   const [context, sp] = await Promise.all([getSessionContext(), searchParams]);
   if (!context) return null;
 
-  const propertyIds = await listOwnerPropertyIds(
-    context.authUserId,
-    context.organization.id,
-  );
+  const orgId = context.organization.id;
+  const propertyIds = await listOwnerPropertyIds(context.authUserId, orgId);
 
   if (propertyIds.length === 0) {
     return (
@@ -52,17 +52,23 @@ export default async function OwnerMaintenanceReportPage({
   const from = isValidDate(sp.from) ? sp.from! : defaults.from;
   const to = isValidDate(sp.to) ? sp.to! : defaults.to;
 
-  const report = await getMaintenanceReport(
-    context.organization.id,
-    from,
-    to,
-    { propertyIds },
-  );
+  const [report, insight] = await Promise.all([
+    getMaintenanceReport(orgId, from, to, { propertyIds }),
+    getLatestReportInsight(orgId, "maintenance"),
+  ]);
+
   return (
     <MaintenanceReport
       report={report}
       backHref="/owner-portal/reports"
       dateRangeBasePath="/owner-portal/reports/maintenance"
+      aiInsight={{
+        aiScope: { reportType: "maintenance", propertyIds },
+        initialInsight: insight
+          ? (insight.insight as unknown as ReportInsightResult)
+          : null,
+        initialGeneratedAt: insight?.generated_at ?? null,
+      }}
     />
   );
 }

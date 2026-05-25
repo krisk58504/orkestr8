@@ -15,7 +15,8 @@
 > 25/25 (2026-05-24), owner portal + recursion safety (Suite 15)
 > 32/32 (2026-05-24). Phase 6 in progress: is_ai_actor RESTRICTIVE
 > (Suite 16) 12/12 (2026-05-25), AI rate-limit semantics (Suite 17)
-> 8/8 (2026-05-25). All 258 executed assertions pass; 0 errored.**
+> 8/8 (2026-05-25), report_insights RLS (Suite 18) 12/12 (2026-05-25).
+> All 270 executed assertions pass; 0 errored.**
 >
 > **Phase 3 RLS coverage gap CLOSED.** All six Phase 3 suites (7-12) are
 > now authored and passing.
@@ -537,6 +538,33 @@ The helper's count query is:
 | RL7 | PM-A | sum(suggested) + sum(blocked) = total | ✅ all statuses counted |
 | RL8 | SUPER_ADMIN ↔ PM-A | same query, same count | ✅ no SUPER_ADMIN bypass |
 
+## 4q. Phase 6 Suite 18 — report_insights RLS
+
+Implemented in `supabase/tests/rls_phase6_report_insights.sql`. Covers the
+new `report_insights` table introduced in slice 11c migration
+`20260606000100_phase6_report_insights.sql`.
+
+Posture per PHASE_6_PLAN.md slice 11c audit decision J + J3 sub-decision:
+generator-restricted INVESTOR access (sees own rows only); staff org-self
+all rows; immutable from client (no UPDATE/DELETE policies). Server
+action layer enforces "scope_filter.propertyIds ⊆ caller's visible
+property set" — RLS does not enforce that subset.
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| RI1 | Org A PM | `select … where organization_id = orgB` | ✅ 0 rows (cross-org isolated) |
+| RI2 | Org A PM | `insert into orgB` | ✅ **denied** |
+| RI3 | Org A PM | `select … where organization_id = orgA` | ✅ 3 rows (staff sees all org rows) |
+| RI4 | INVESTOR 1 | `select … where organization_id = orgA` | ✅ 1 row (own generation only) |
+| RI5 | INVESTOR 1 | `select` for INVESTOR 2's row | ✅ 0 rows (J3 enforcement) |
+| RI6 | INVESTOR 1 | `select` for staff-generated row | ✅ 0 rows (J3 strict) |
+| RI7 | Staff | `insert` with empty scope_filter (org-wide) | ✅ succeeds |
+| RI8 | Staff | `insert` with scope_filter | ✅ succeeds |
+| RI9 | INVESTOR 1 | `insert` for owned property | ✅ succeeds |
+| RI10 | INVESTOR 1 | `insert` with spoofed `generated_by` | ✅ **denied** (WITH CHECK enforces `generated_by = auth.uid()`) |
+| RI11 | privileged | `insert` with invalid `report_type` | ✅ **denied** (CHECK constraint) |
+| RI12 | Staff | `update` + `delete` | ✅ both denied (no UPDATE/DELETE policies) |
+
 ## 5. How to run
 
 ```bash
@@ -558,6 +586,7 @@ npx tsx scripts/run-sql.ts supabase/tests/rls_phase5_entities.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase5_owner_portal.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase6_ai_restrictive.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase6_rate_limit.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase6_report_insights.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -592,3 +621,5 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-25 | `scripts/run-sql.ts` (pg) | 12 / 12, 0 errored | `rls_phase6_ai_restrictive.sql` — Suite 16 — AI1-AI3 (is_ai_actor() helper), AI4-AI7 (rent_charges RESTRICTIVE block matrix), AI8-AI10 (payments RESTRICTIVE block matrix), AI11-AI12 (PERMISSIVE policy regression) |
 | 2026-05-25 | `scripts/run-sql.ts` (pg) | 8 / 8, 0 errored | `rls_phase6_rate_limit.sql` — Suite 17 — RL1-RL7 (window count semantics — org-scoped, window-scoped, all statuses counted), RL8 (no SUPER_ADMIN bypass) |
 | 2026-05-25 | `scripts/run-sql.ts` (pg) | **17 / 17 suites pass — 258 / 258 cumulative** | full regression run across all 17 suites post-Phase 6.1; zero pre-existing-suite regressions from Phase 6.1 migration (ai_logs cost columns + RESTRICTIVE policies). Suite 14 specifically re-verified because RESTRICTIVE ANDs with rent_charges + payments PERMISSIVE policies; all existing assertions pass because `is_ai_actor()` returns false in non-flagged contexts. |
+| 2026-05-25 | `scripts/run-sql.ts` (pg) | 12 / 12, 0 errored | `rls_phase6_report_insights.sql` — Suite 18 — RI1-RI3 (cross-org SELECT/INSERT + staff-org-self), RI4-RI6 (INVESTOR generator-restricted J3 — own only, no cross-investor, no staff-generated), RI7-RI10 (INSERT shape — empty scope, scoped, INVESTOR own-property, generated_by spoof rejection), RI11 (report_type CHECK), RI12 (UPDATE+DELETE both blocked — no policies) |
+| 2026-05-25 | `scripts/run-sql.ts` (pg) | **18 / 18 suites pass — 270 / 270 cumulative** | full regression run post-Phase 6.2 slice 11c; zero pre-existing-suite regressions from the new report_insights table |

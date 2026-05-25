@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { ArrowLeft, DollarSign } from "lucide-react";
 import { PrintButton } from "@/components/payments/statements/print-button";
+import {
+  ReportInsightCard,
+  type ReportInsightCardProps,
+} from "@/components/reports/report-insight-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
@@ -25,9 +29,11 @@ function formatAmount(amount: number): string {
 export function RentRollReport({
   rows,
   backHref = "/reports",
+  aiInsight,
 }: {
   rows: RentRollRow[];
   backHref?: string;
+  aiInsight?: ReportInsightCardProps;
 }) {
   const totals = rows.reduce(
     (acc, r) => ({
@@ -82,6 +88,8 @@ export function RentRollReport({
         title="Rent roll"
         description="Per-tenant balances and 30/60/90+ delinquency aging."
       />
+
+      {aiInsight ? <ReportInsightCard {...aiInsight} /> : null}
 
       <div className="grid gap-4 sm:grid-cols-4">
         <StatCard
