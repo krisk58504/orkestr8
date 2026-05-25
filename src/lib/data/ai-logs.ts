@@ -25,6 +25,11 @@ export async function logAiAction(params: {
   prompt?: Json | null;
   response?: Json | null;
   metadata?: Json;
+  /** Cost tracking — populated for real LLM calls (Phase 6.1+). */
+  tokensInput?: number | null;
+  tokensOutput?: number | null;
+  costCents?: number | null;
+  modelName?: string | null;
 }): Promise<void> {
   try {
     const admin = createAdminClient();
@@ -38,6 +43,10 @@ export async function logAiAction(params: {
       prompt: params.prompt ?? null,
       response: params.response ?? null,
       metadata: params.metadata ?? {},
+      tokens_input: params.tokensInput ?? null,
+      tokens_output: params.tokensOutput ?? null,
+      cost_cents: params.costCents ?? null,
+      model_name: params.modelName ?? null,
     });
   } catch {
     // Intentionally ignored — see doc comment.

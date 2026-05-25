@@ -2,11 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/guards";
-import { canRunAutomationAction } from "@/lib/auth/permissions";
+import {
+  AI_RATE_LIMIT_PER_WINDOW,
+  AI_RATE_LIMIT_WINDOW_SECONDS,
+  canRunAutomationAction,
+  checkAiRateLimit,
+} from "@/lib/auth/permissions";
 import { isStaff } from "@/lib/auth/roles";
 import {
-  runPlaceholderTriage,
-  TRIAGE_MODEL,
+  runMaintenanceTriageAi,
   type MaintenanceTriageResult,
 } from "@/lib/ai/maintenance-triage";
 import { logAiAction } from "@/lib/data/ai-logs";
@@ -19,16 +23,20 @@ export type TriageActionResult =
   | { ok: false; error: string; blocked?: boolean };
 
 /**
- * Run placeholder AI triage on a maintenance request.
+ * Run real AI triage on a maintenance request.
  *
- * Triage is a non-acting "suggest" action: it proposes a priority/category but
- * never changes the request or dispatches work. It still passes the central
- * Gate 2 chokepoint (canRunAutomationAction) before running, and every
- * outcome — blocked or suggested — is recorded in ai_logs.
+ * Triage is a non-acting "suggest" action: it proposes a priority/category
+ * but never changes the request or dispatches work. It passes two
+ * chokepoints before invoking the LLM:
  *
- * With an organization's AI mode left at the default 'disabled', the gate
- * blocks this and the call returns { ok: false, blocked: true }. That is the
- * expected, safe default — not an error.
+ *   1. SPEC Gate 2 — canRunAutomationAction enforces the org's ai_mode
+ *      and module-level enablement. Default `disabled` denies.
+ *   2. Phase 6 rate limit — checkAiRateLimit enforces 10 calls / minute
+ *      / org. Discipline applies system-wide (no SUPER_ADMIN bypass per
+ *      PHASE_6_PLAN.md §0.5 decision 15).
+ *
+ * Every outcome — blocked by either gate, executed, or failed — is
+ * recorded in ai_logs with cost tracking when an LLM call actually ran.
  */
 export async function runMaintenanceTriage(
   requestId: string,
@@ -75,18 +83,69 @@ export async function runMaintenanceTriage(
       aiMode: decision.mode,
       status: "blocked",
       prompt: { kind: "maintenance_triage", requestId, title: request.title },
-      metadata: { reason: decision.reason, model: TRIAGE_MODEL },
+      metadata: { reason: decision.reason },
     });
     return { ok: false, error: decision.reason, blocked: true };
   }
 
-  // Placeholder triage — deterministic keyword rules, no model/network call.
-  const triage = runPlaceholderTriage({
-    title: request.title,
-    description: request.description,
-    category: request.category,
-    priority: request.priority,
-  });
+  // Phase 6 rate limit — 10 calls / minute / org (no SUPER_ADMIN bypass).
+  const rateLimit = await checkAiRateLimit(supabase, orgId);
+  if (!rateLimit.allowed) {
+    await logAiAction({
+      organizationId: orgId,
+      actorId: guard.context.authUserId,
+      module: "maintenance",
+      actionType: "suggest",
+      aiMode: decision.mode,
+      status: "blocked",
+      prompt: { kind: "maintenance_triage", requestId, title: request.title },
+      metadata: {
+        reason: "rate_limited",
+        count: rateLimit.count,
+        window_seconds: rateLimit.windowSeconds,
+        limit: AI_RATE_LIMIT_PER_WINDOW,
+      },
+    });
+    return {
+      ok: false,
+      error: `AI is busy — try again shortly (rate limit ${AI_RATE_LIMIT_PER_WINDOW} per ${AI_RATE_LIMIT_WINDOW_SECONDS}s).`,
+      blocked: true,
+    };
+  }
+
+  // Real Claude call — provider errors and schema validation failures
+  // are caught and routed to a logged 'blocked' entry.
+  let triageResult: MaintenanceTriageResult;
+  let costMetadata: Awaited<ReturnType<typeof runMaintenanceTriageAi>>["cost"];
+  try {
+    const aiOut = await runMaintenanceTriageAi({
+      title: request.title,
+      description: request.description,
+      category: request.category,
+      priority: request.priority,
+    });
+    triageResult = aiOut.result;
+    costMetadata = aiOut.cost;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown AI error";
+    await logAiAction({
+      organizationId: orgId,
+      actorId: guard.context.authUserId,
+      module: "maintenance",
+      actionType: "suggest",
+      aiMode: decision.mode,
+      status: "blocked",
+      prompt: { kind: "maintenance_triage", requestId, title: request.title },
+      metadata: {
+        reason: "provider_error",
+        error_message: message.slice(0, 500),
+      },
+    });
+    return {
+      ok: false,
+      error: "AI suggestion unavailable — try again later.",
+    };
+  }
 
   await logAiAction({
     organizationId: orgId,
@@ -101,8 +160,12 @@ export async function runMaintenanceTriage(
       title: request.title,
       description: request.description,
     },
-    response: triage as unknown as Json,
-    metadata: { model: TRIAGE_MODEL, requiresApproval: decision.requiresApproval },
+    response: triageResult as unknown as Json,
+    metadata: { requiresApproval: decision.requiresApproval },
+    tokensInput: costMetadata.tokensInput,
+    tokensOutput: costMetadata.tokensOutput,
+    costCents: costMetadata.costCents,
+    modelName: costMetadata.modelName,
   });
 
   // The suggestion is stored on the request — advisory, never authoritative.
@@ -110,7 +173,7 @@ export async function runMaintenanceTriage(
   const { error } = await supabase
     .from("maintenance_requests")
     .update({
-      ai_triage: triage as unknown as Json,
+      ai_triage: triageResult as unknown as Json,
       ai_triaged_at: new Date().toISOString(),
     })
     .eq("id", requestId)
@@ -124,13 +187,16 @@ export async function runMaintenanceTriage(
     entityType: "maintenance_request",
     entityId: requestId,
     metadata: {
-      model: TRIAGE_MODEL,
-      suggestedPriority: triage.suggestedPriority,
-      suggestedCategory: triage.suggestedCategory,
+      model: costMetadata.modelName,
+      suggestedPriority: triageResult.suggestedPriority,
+      suggestedCategory: triageResult.suggestedCategory,
+      tokensInput: costMetadata.tokensInput,
+      tokensOutput: costMetadata.tokensOutput,
+      costCents: costMetadata.costCents,
     },
   });
 
   revalidatePath(`/maintenance/${requestId}`);
   revalidatePath("/maintenance");
-  return { ok: true, triage };
+  return { ok: true, triage: triageResult };
 }

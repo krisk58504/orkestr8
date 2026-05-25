@@ -13,7 +13,9 @@
 > (Suite 10) 11/11 (2026-05-23). Phase 4 complete: leasing CRM
 > (Suite 13) 31/31 (2026-05-24). Phase 5 complete: entities (Suite 14)
 > 25/25 (2026-05-24), owner portal + recursion safety (Suite 15)
-> 32/32 (2026-05-24). All 238 executed assertions pass; 0 errored.**
+> 32/32 (2026-05-24). Phase 6 in progress: is_ai_actor RESTRICTIVE
+> (Suite 16) 12/12 (2026-05-25), AI rate-limit semantics (Suite 17)
+> 8/8 (2026-05-25). All 258 executed assertions pass; 0 errored.**
 >
 > **Phase 3 RLS coverage gap CLOSED.** All six Phase 3 suites (7-12) are
 > now authored and passing.
@@ -489,6 +491,52 @@ helper-wrapped owner-self branches.
 | R6 | INVESTOR I1 | `select count(*) from payments` | ✅ completes (deepest chain) | recursion-safety smoke |
 | R7 | INVESTOR I1 | `select count(*) from property_owners` | ✅ completes | recursion-safety smoke |
 
+## 4o. Phase 6 Suite 16 — is_ai_actor RESTRICTIVE policy
+
+Implemented in `supabase/tests/rls_phase6_ai_restrictive.sql`. Covers the
+`is_ai_actor()` helper + RESTRICTIVE policies on `rent_charges` +
+`payments` introduced in migration `20260604000100_phase6_ai_foundation.sql`.
+
+Posture per PHASE_6_PLAN.md §3a: the RESTRICTIVE policies AND with the
+four PERMISSIVE policies on rent_charges + payments. Phase 6.1 ships no
+code that flips `app.is_ai_actor`, so the policies are a no-op for real
+code paths — deferred-activation defense-in-depth scaffolding.
+
+| # | Acting as | Setting | Action | Expected |
+|---|---|---|---|---|
+| AI1 | privileged | no setting | `is_ai_actor()` | ✅ returns false |
+| AI2 | privileged | `app.is_ai_actor=true` | `is_ai_actor()` | ✅ returns true |
+| AI3 | privileged | `app.is_ai_actor=false` | `is_ai_actor()` | ✅ returns false |
+| AI4 | PM-A | no flag | `insert rent_charges` | ✅ succeeds |
+| AI5 | PM-A | flag set | `insert rent_charges` | ✅ **denied** (RESTRICTIVE) |
+| AI6 | PM-A | flag set | `update rent_charges` | ✅ **denied** |
+| AI7 | PM-A | flag set | `delete rent_charges` | ✅ **denied** |
+| AI8 | PM-A | flag set | `insert payments` | ✅ **denied** |
+| AI9 | PM-A | flag set | `update payments` | ✅ **denied** |
+| AI10 | PM-A | flag set | `delete payments` | ✅ **denied** |
+| AI11 | PM-A | no flag | `select rent_charges` | ✅ rows visible (PERMISSIVE intact) |
+| AI12 | PM-A | no flag | `select payments` | ✅ rows visible (PERMISSIVE intact) |
+
+## 4p. Phase 6 Suite 17 — AI rate-limit query semantics
+
+Implemented in `supabase/tests/rls_phase6_rate_limit.sql`. Proves the
+SQL-level properties the `checkAiRateLimit` helper depends on (PHASE_6_PLAN.md
+§0.5 decision 15: 10 calls / minute / org, no SUPER_ADMIN bypass).
+
+The helper's count query is:
+`SELECT count(*) FROM ai_logs WHERE organization_id = $1 AND created_at > now() - interval '60s'`.
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| RL1 | PM-A | window count for Org A (9 recent rows) | ✅ count = 9 |
+| RL2 | PM-A | helper boolean (count < 10) | ✅ allowed (true) |
+| RL3 | PM-A | window count after 10th insert | ✅ count = 10, allowed=false |
+| RL4 | PM-A | window count for Org B (independent) | ✅ count = 3 (no leak from Org A) |
+| RL5 | PM-A | total vs windowed (ancient row excluded) | ✅ total=11, windowed=10 |
+| RL6 | PM-A | count after `blocked`-status insert | ✅ count = 11 (blocked counts) |
+| RL7 | PM-A | sum(suggested) + sum(blocked) = total | ✅ all statuses counted |
+| RL8 | SUPER_ADMIN ↔ PM-A | same query, same count | ✅ no SUPER_ADMIN bypass |
+
 ## 5. How to run
 
 ```bash
@@ -508,6 +556,8 @@ npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_messages_immutable.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase4_leasing.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase5_entities.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase5_owner_portal.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase6_ai_restrictive.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase6_rate_limit.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -539,3 +589,6 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-24 | `scripts/run-sql.ts` (pg) | 25 / 25, 0 errored | `rls_phase5_entities.sql` — Suite 14 — C1-C8 (rent_charges cohort + §8.1 FK pins), Y1-Y8 (payments cohort + §8.1 FK pins), J1-J9 (property_owners junction — staff/self read + manager-only write + INVESTOR self-grant rejection + §8.1 FK pins) |
 | 2026-05-24 | `scripts/run-sql.ts` (pg) | 32 / 32, 0 errored | `rls_phase5_owner_portal.sql` — Suite 15 — O1-O6 (owner-self positive admit, exercises 6 SECURITY DEFINER helpers), O7-O12 (cross-owner deny), O13-O17 (tenant-self preservation post drop-and-recreate), O18-O23 (staff branch preservation), D1-D2 (dual-mode + no-leakage), R1-R7 (recursion-safety class — codifies the slice 10e incident lesson) |
 | 2026-05-24 | `scripts/run-sql.ts` (pg) | **15 / 15 suites pass — 238 / 238 cumulative** | full regression run across all 15 suites post-Phase 5; zero pre-existing-suite regressions from slice 10e drop-and-recreate operations |
+| 2026-05-25 | `scripts/run-sql.ts` (pg) | 12 / 12, 0 errored | `rls_phase6_ai_restrictive.sql` — Suite 16 — AI1-AI3 (is_ai_actor() helper), AI4-AI7 (rent_charges RESTRICTIVE block matrix), AI8-AI10 (payments RESTRICTIVE block matrix), AI11-AI12 (PERMISSIVE policy regression) |
+| 2026-05-25 | `scripts/run-sql.ts` (pg) | 8 / 8, 0 errored | `rls_phase6_rate_limit.sql` — Suite 17 — RL1-RL7 (window count semantics — org-scoped, window-scoped, all statuses counted), RL8 (no SUPER_ADMIN bypass) |
+| 2026-05-25 | `scripts/run-sql.ts` (pg) | **17 / 17 suites pass — 258 / 258 cumulative** | full regression run across all 17 suites post-Phase 6.1; zero pre-existing-suite regressions from Phase 6.1 migration (ai_logs cost columns + RESTRICTIVE policies). Suite 14 specifically re-verified because RESTRICTIVE ANDs with rent_charges + payments PERMISSIVE policies; all existing assertions pass because `is_ai_actor()` returns false in non-flagged contexts. |

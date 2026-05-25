@@ -378,6 +378,10 @@ export type Database = {
           prompt: Json | null;
           response: Json | null;
           metadata: Json;
+          tokens_input: number | null;
+          tokens_output: number | null;
+          cost_cents: number | null;
+          model_name: string | null;
           created_at: string;
         };
         Insert: {
@@ -391,6 +395,10 @@ export type Database = {
           prompt?: Json | null;
           response?: Json | null;
           metadata?: Json;
+          tokens_input?: number | null;
+          tokens_output?: number | null;
+          cost_cents?: number | null;
+          model_name?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["ai_logs"]["Insert"]>;
@@ -1059,6 +1067,7 @@ export type Database = {
       is_super_admin: { Args: Record<string, never>; Returns: boolean };
       is_org_staff: { Args: Record<string, never>; Returns: boolean };
       is_org_manager: { Args: Record<string, never>; Returns: boolean };
+      is_ai_actor: { Args: Record<string, never>; Returns: boolean };
     };
     Enums: {
       user_role:

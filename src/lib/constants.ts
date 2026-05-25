@@ -373,6 +373,28 @@ export const MAINTENANCE_CATEGORY_LABELS: Record<MaintenanceCategory, string> = 
   other: "Other",
 };
 
+/** All maintenance categories as a typed tuple — for prompts, validators. */
+export const MAINTENANCE_CATEGORIES = [
+  "plumbing",
+  "electrical",
+  "hvac",
+  "appliance",
+  "structural",
+  "pest",
+  "landscaping",
+  "locks",
+  "general",
+  "other",
+] as const satisfies readonly MaintenanceCategory[];
+
+/** All maintenance priorities as a typed tuple — for prompts, validators. */
+export const MAINTENANCE_PRIORITIES = [
+  "low",
+  "medium",
+  "high",
+  "emergency",
+] as const satisfies readonly MaintenancePriority[];
+
 export const WORK_ORDER_STATUS_META: Record<
   WorkOrderStatus,
   { label: string; tone: Tone }

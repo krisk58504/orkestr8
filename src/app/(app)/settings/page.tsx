@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { Bot, Mail, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Bot, Mail, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -9,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { isOwner } from "@/lib/auth/roles";
 import { getSessionContext } from "@/lib/auth/session";
 import { AI_MODE_LABELS, ORG_STATUS_META, ROLE_LABELS } from "@/lib/constants";
 
@@ -29,6 +32,7 @@ export default async function SettingsPage() {
 
   const org = context.organization;
   const orgStatus = ORG_STATUS_META[org.status];
+  const canManageAi = isOwner(context.roles);
 
   return (
     <div className="space-y-6">
@@ -85,7 +89,7 @@ export default async function SettingsPage() {
         <CardContent className="space-y-4">
           <div className="flex items-start gap-3 rounded-lg border p-3">
             <Bot className="mt-0.5 size-4 text-muted-foreground" />
-            <div className="flex-1">
+            <div className="flex-1 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">AI &amp; automation mode</p>
                 <StatusBadge
@@ -94,11 +98,21 @@ export default async function SettingsPage() {
                   {AI_MODE_LABELS[org.ai_mode]}
                 </StatusBadge>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 AI defaults to disabled. No automation can send messages,
                 dispatch vendors, or modify records until the mode is raised and
                 the relevant module is explicitly enabled.
               </p>
+              {canManageAi ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  render={<Link href="/settings/ai" />}
+                >
+                  Manage AI mode
+                  <ArrowRight className="size-4" />
+                </Button>
+              ) : null}
             </div>
           </div>
 

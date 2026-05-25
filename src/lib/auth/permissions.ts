@@ -44,6 +44,23 @@ export type AutomationDecision = {
   reason: string;
 };
 
+/**
+ * Result of an AI rate-limit check. The window is fixed at 60 seconds
+ * (rolling) for the Phase 6 baseline (PHASE_6_PLAN.md §0.5 decision 15:
+ * 10 calls / min / org). `count` is the number of ai_logs rows recorded
+ * for the org within the last `windowSeconds`.
+ */
+export type AiRateLimitDecision = {
+  allowed: boolean;
+  count: number;
+  windowSeconds: number;
+};
+
+/** Max AI calls per organization per AI_RATE_LIMIT_WINDOW_SECONDS. */
+export const AI_RATE_LIMIT_PER_WINDOW = 10;
+/** Rolling-window length used by checkAiRateLimit. */
+export const AI_RATE_LIMIT_WINDOW_SECONDS = 60;
+
 /** Side-effecting actions — never permitted without an explicit elevated mode. */
 const REAL_ACTIONS: AutomationActionType[] = [
   "send_message",
@@ -198,4 +215,51 @@ export async function canRunAutomationAction(
         reason: "Unrecognized AI mode — denied by default.",
       };
   }
+}
+
+/**
+ * Paired sibling to canRunAutomationAction: per-org rate limiting for AI
+ * calls. PHASE_6_PLAN.md §0.5 decision 15 locks the cap at 10 calls /
+ * minute / org with NO SUPER_ADMIN bypass — the discipline applies
+ * system-wide so a runaway script can't bypass via super-admin auth.
+ *
+ * Implementation: count ai_logs rows for the org within the rolling
+ * window. All statuses count (suggested + blocked both), so a
+ * rate-limited org cannot bypass by intentionally triggering blocks.
+ *
+ * The cookie-bound supabase client passed in is RLS-enforced; staff
+ * already have SELECT on ai_logs for their own org per existing
+ * ai_logs RLS policies (read-only to org managers).
+ */
+export async function checkAiRateLimit(
+  supabase: SupabaseClient<Database>,
+  orgId: string,
+): Promise<AiRateLimitDecision> {
+  const sinceIso = new Date(
+    Date.now() - AI_RATE_LIMIT_WINDOW_SECONDS * 1000,
+  ).toISOString();
+
+  const { count, error } = await supabase
+    .from("ai_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", orgId)
+    .gte("created_at", sinceIso);
+
+  if (error) {
+    // Fail-closed on rate-limit query error — refuse to let the call
+    // proceed if we cannot verify the org is under quota. The caller
+    // will surface this as a rate-limited block to the user.
+    return {
+      allowed: false,
+      count: AI_RATE_LIMIT_PER_WINDOW,
+      windowSeconds: AI_RATE_LIMIT_WINDOW_SECONDS,
+    };
+  }
+
+  const observed = count ?? 0;
+  return {
+    allowed: observed < AI_RATE_LIMIT_PER_WINDOW,
+    count: observed,
+    windowSeconds: AI_RATE_LIMIT_WINDOW_SECONDS,
+  };
 }
