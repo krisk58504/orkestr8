@@ -14,7 +14,13 @@ import {
 import { OccupancyBarChart } from "@/components/reports/occupancy-bar-chart";
 import type { OccupancyRow } from "@/lib/data/reports/occupancy";
 
-export function OccupancyReport({ rows }: { rows: OccupancyRow[] }) {
+export function OccupancyReport({
+  rows,
+  backHref = "/reports",
+}: {
+  rows: OccupancyRow[];
+  backHref?: string;
+}) {
   const totals = rows.reduce(
     (acc, r) => ({
       total: acc.total + r.total_units,
@@ -34,7 +40,7 @@ export function OccupancyReport({ rows }: { rows: OccupancyRow[] }) {
           variant="ghost"
           size="sm"
           className="-ml-2 print:hidden"
-          render={<Link href="/reports" />}
+          render={<Link href={backHref} />}
         >
           <ArrowLeft className="size-4" />
           Reports
@@ -56,7 +62,7 @@ export function OccupancyReport({ rows }: { rows: OccupancyRow[] }) {
           variant="ghost"
           size="sm"
           className="-ml-2"
-          render={<Link href="/reports" />}
+          render={<Link href={backHref} />}
         >
           <ArrowLeft className="size-4" />
           Reports

@@ -22,7 +22,13 @@ function formatAmount(amount: number): string {
   })}`;
 }
 
-export function RentRollReport({ rows }: { rows: RentRollRow[] }) {
+export function RentRollReport({
+  rows,
+  backHref = "/reports",
+}: {
+  rows: RentRollRow[];
+  backHref?: string;
+}) {
   const totals = rows.reduce(
     (acc, r) => ({
       current: acc.current + r.current,
@@ -42,7 +48,7 @@ export function RentRollReport({ rows }: { rows: RentRollRow[] }) {
           variant="ghost"
           size="sm"
           className="-ml-2 print:hidden"
-          render={<Link href="/reports" />}
+          render={<Link href={backHref} />}
         >
           <ArrowLeft className="size-4" />
           Reports
@@ -64,7 +70,7 @@ export function RentRollReport({ rows }: { rows: RentRollRow[] }) {
           variant="ghost"
           size="sm"
           className="-ml-2"
-          render={<Link href="/reports" />}
+          render={<Link href={backHref} />}
         >
           <ArrowLeft className="size-4" />
           Reports

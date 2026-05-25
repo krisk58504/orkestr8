@@ -18,7 +18,7 @@ const OWNER_NAV_ITEMS: OwnerNavItem[] = [
     label: "Reports",
     href: "/owner-portal/reports",
     icon: PieChart,
-    enabled: false, // slice 10g flips this
+    enabled: true,
   },
 ];
 

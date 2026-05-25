@@ -20,7 +20,15 @@ function formatHours(h: number | null): string {
   return `${(h / 24).toFixed(1)}d`;
 }
 
-export function MaintenanceReport({ report }: { report: MaintenanceReportData }) {
+export function MaintenanceReport({
+  report,
+  backHref = "/reports",
+  dateRangeBasePath = "/reports/maintenance",
+}: {
+  report: MaintenanceReportData;
+  backHref?: string;
+  dateRangeBasePath?: string;
+}) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 print:hidden">
@@ -28,7 +36,7 @@ export function MaintenanceReport({ report }: { report: MaintenanceReportData })
           variant="ghost"
           size="sm"
           className="-ml-2"
-          render={<Link href="/reports" />}
+          render={<Link href={backHref} />}
         >
           <ArrowLeft className="size-4" />
           Reports
@@ -42,7 +50,7 @@ export function MaintenanceReport({ report }: { report: MaintenanceReportData })
       />
 
       <DateRangeControls
-        basePath="/reports/maintenance"
+        basePath={dateRangeBasePath}
         current={report.period}
       />
 
