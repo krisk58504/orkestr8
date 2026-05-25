@@ -1,29 +1,30 @@
-# PHASE_6_PLAN.md — Phase 6 build plan (SKETCH; NOT a locked plan)
+# PHASE_6_PLAN.md — Phase 6 build plan (AI engine; locked 2026-05-24)
 
-> Read SPEC.md before working from this plan. This document mirrors the
-> structural shape of PHASE_5_PLAN.md but is a **first-draft scaffold**.
-> Several decisions are partner-feedback-dependent and are explicitly
-> marked **PENDING** in §0.6. The locked decisions in §0.5 are the
-> partner-independent commitments that can be honored tonight; the
-> PENDING items will be resolved in a follow-up commit once partner
-> signal arrives.
+> Read SPEC.md before working from this plan. This document is the
+> **locked plan** for Phase 6. All seven active §0.6 decisions from
+> the prior scaffold were resolved in the 2026-05-24 audit-and-decide
+> session. The strategic shape is now committed.
 >
 > Source-of-record snapshot: branch `phase-2-maintenance` at HEAD
-> `4f3af6b` (Section 2 of PHASE_6_AUDIT_DRAFT.md appended). Authored
-> 2026-05-24, immediately after the four Phase 6 audits (Section 1
-> problem space + Section 2 Automation + Section 3 AI + Section 4
-> Inspections + Section 5 Amenities) landed in conversation.
+> `784d8d1` (Phase 6 audit draft sections 1-5 + scaffold-version plan).
+> Authored 2026-05-24, immediately after the audit-and-decide session
+> that closed the §0.6 PENDING list.
 >
 > Inputs:
 > - **PHASE_5_PLAN.md** — the structural template (~965 lines)
-> - **PHASE_6_AUDIT_DRAFT.md** — Sections 1-5, the catalog this plan
->   draws from. Sections 3/4/5 (AI / Inspections / Amenities) are
->   captured in conversation context; the file currently contains
->   Sections 1+2 on disk pending an append-and-commit follow-up.
+> - **PHASE_6_AUDIT_DRAFT.md** — Sections 1-5 (problem space + four
+>   module audits), 1,859 lines on disk
 > - **SECURITY_REVIEW.md §13** — the Phase 5 sign-off; §13.5 reviewer-
->   attention paragraph + §13.6 known-limitations list provide the
->   institutional discipline that carries forward.
-> - **SPEC.md** line 564 — `Automations + AI + inspections + amenities`
+>   attention paragraph + §13.6 known limitations carry forward
+> - **SPEC.md** line 564 — the source `Automations + AI + inspections +
+>   amenities` listing; Phase 6 deviates by shipping AI alone and
+>   deferring the other three modules to Phase 7+
+>
+> **Strategic shape**: Phase 6 ships the AI engine — single spine,
+> single module. Automation, Inspections, and Amenities defer to
+> Phase 7+. PAYMENTS FULL stays deferred to a future unnumbered phase
+> per SPEC. The reasoning is captured in §0.5 decision 11
+> (AI-is-the-product-differentiator strategic call).
 
 ## 0. Spec headline (verbatim)
 
@@ -32,15 +33,18 @@ Phase 6:
 Automations + AI + inspections + amenities
 ```
 
-That is the entire phase header, per SPEC.md line 563-564.
+That is the entire phase header per SPEC.md line 563-564.
 
-The product surface, also verbatim, from SPEC.md four module sections:
+**Phase 6 as planned and locked deviates from SPEC line 564.** Phase 6
+ships AI alone. Automation, Inspections, and Amenities each retain
+their SPEC-named module destination but defer to Phase 7+ pending
+Phase 6 partner signal. The deviation is deliberate (see §0.5 decision
+11) and is the only locked-in deviation from SPEC sequencing.
+
+The Phase 6 product surface, as planned, is the SPEC AI LAYER
+(line 410-418) and only the AI LAYER:
 
 ```
-### AUTOMATION ENGINE
-- Trigger → Condition → Action system
-
-### AI LAYER (REQUIRED)
 AI must support:
 - Maintenance triage
 - Leasing assistant
@@ -50,729 +54,819 @@ AI must support:
 - Vendor suggestions
 
 AI must NEVER act without permission controls.
-
-### INSPECTIONS
-- Move-in/out
-- Checklists
-- Photos
-
-### AMENITIES
-- Reservations
-- Rules
 ```
 
-Plus Gate 2 (line 35-68 + 462-477) — AI/Automation Control Gate with
-5 required AI modes, `canRunAutomationAction(orgId, module, actionType)`
-central permission function, mandatory `ai_logs` + `automation_logs`
-writes, and explicit prohibition of AI auto-sending messages,
-auto-dispatching vendors, modifying financial data, or escalating
-issues without org explicit module + action enablement.
+Plus Gate 2 (line 35-68 + 462-477) — already implemented per
+pre-existing `canRunAutomationAction`. Phase 6 wires real call sites.
 
-Plus SPEC line 82 (Gate 3 anti-loop): *"Prevent automation loops
-from sending repeated emails."*
+Plus SPEC line 100 — `AI_AUTOMATION_SAFETY.md` already exists (60
+lines, Phase 1). Phase 6 extends with §7 Phase 6 status and §8
+production-readiness checklist closure.
 
-Plus SPEC line 100: `AI_AUTOMATION_SAFETY.md` is a required file.
-**It already exists** (Phase 1; 60 lines covering default posture,
-modes, central control function, logging, Phase 1 status, and a
-"before enabling AI in production" checklist). Phase 6 closes the
-"before enabling" checklist items.
+Plus SPEC line 465 — *"AI cannot modify financial data"* — §13.9
+deferred the structural enforcement (RESTRICTIVE policy keyed on
+`is_ai_actor()`) to "when AI ships." That is Phase 6.1.
 
-Plus SPEC line 465: *"AI cannot modify financial data"* — Phase 5
-§13.9 deferred the **structural enforcement** (RESTRICTIVE policy
-keyed on `is_ai_actor()`) to "when AI ships." That's Phase 6.
+**Phase 6 explicitly does NOT include**:
+- Automation engine (SPEC §"AUTOMATION ENGINE" line 390-391) —
+  deferred to Phase 7+
+- Inspections (SPEC §"INSPECTIONS" line 397-400) — deferred to Phase 7+
+- Amenities (SPEC §"AMENITIES" line 402-404) — deferred to Phase 7+
+- PAYMENTS FULL (NOT in SPEC Phase 6) — deferred to future unnumbered
+  phase per SPEC line 199 and §0.5 decision 17
 
-That is the totality of what SPEC names for Phase 6.
+### Pre-existing Phase 1-2 infrastructure (read-first finding from Section 3 audit)
 
-### Pre-existing Phase 1 infrastructure (read-first finding)
+**Significant Phase 6 AI scope is already in place from Phase 1-2 staging:**
 
-**Significantly more is already in place than naïve reading suggests:**
-
-- `automation_logs` and `ai_logs` tables — full schemas, Phase 1
-  migration `20260518000500_infrastructure.sql`. Both have `status` text
-  fields, jsonb columns (`result` / `prompt` / `response` / `metadata`),
-  and the deliberate omission of an `automation_id` FK target (nullable
-  — waiting for Phase 6 to author the `automations` parent table).
-- `organizations.ai_mode` column — 5 SPEC-required enum values
-  (`disabled / draft_only / suggest_only / auto_with_approval /
-  fully_automated`), default `disabled`. Per migration
-  `20260518000200_core_tenancy.sql`.
-- `canRunAutomationAction(supabase, orgId, module, actionType)` — full
-  Gate 2 chokepoint at `src/lib/auth/permissions.ts`, 201 lines.
-  Implements all 5 modes with deny-by-default semantics. Real
-  (side-effecting) actions additionally require per-module opt-in in
-  the `settings` table.
+- `organizations.ai_mode` column with 5 SPEC-required enum values,
+  default `disabled` (migration `20260518000200_core_tenancy.sql`).
+- `ai_logs` table — full schema with `prompt jsonb`, `response jsonb`,
+  `ai_mode` enum, `status` text (migration `20260518000500_infrastructure.sql`).
+- `canRunAutomationAction(supabase, orgId, module, actionType)` —
+  fully implemented at `src/lib/auth/permissions.ts` (201 lines).
+  All 5 AI modes implemented with deny-by-default; real (side-effecting)
+  actions require per-module opt-in in `settings`.
 - `AutomationModule` enum (7 modules) and `AutomationActionType` enum
-  (9 actions split into non-acting and side-effecting) — already
-  exported and used in `runMaintenanceTriage` server action at
-  `src/app/(app)/maintenance/triage-actions.ts`.
-- `logAiAction()` writer at `src/lib/data/ai-logs.ts` — service-role
-  admin client, fail-silent semantics matching `logAudit()` precedent.
-- `runPlaceholderTriage()` at `src/lib/ai/maintenance-triage.ts` —
-  deterministic-rules placeholder for maintenance triage AI; the
-  triage **pathway** is fully wired (gate → run → log → persist →
-  audit), only the model call is a placeholder.
-- `AI_AUTOMATION_SAFETY.md` — exists (60 lines). Phase 6 extends it.
+  (9 actions) — exported and consumed.
+- `logAiAction()` at `src/lib/data/ai-logs.ts` — service-role admin
+  client writer.
+- `runPlaceholderTriage()` at `src/lib/ai/maintenance-triage.ts`
+  (246 lines) — deterministic-rules placeholder triage. The maintenance
+  triage **pipeline is fully wired**: gate → run → log → persist →
+  audit. Only the model call is a placeholder.
+- `runMaintenanceTriage()` server action — full pattern that all
+  Phase 6 AI surfaces will mirror.
+- `maintenance-triage-card.tsx` component on `/maintenance/[id]` —
+  advisory-suggestion display pattern shipped.
+- `AI_AUTOMATION_SAFETY.md` — exists, 60 lines.
 
 **Scope reframing**: Phase 6 is significantly more *connect-the-dots*
-than *build-from-scratch* for the AI and Automation modules. The
-Inspections + Amenities modules are genuine greenfield.
+than *build-from-scratch*. Phase 6.1 (maintenance triage) is a one-file
+function-body swap plus surrounding infrastructure (cost columns,
+rate limiting, RESTRICTIVE policy). Phase 6.2+ multiply the maintenance-
+triage pattern to additional surfaces.
 
-## 0.5. Locked Step 0 decisions (partner-independent)
+## 0.5. Locked Step 0 decisions
 
-Ten decisions that can be locked tonight without partner feedback.
-Each captures the structural discipline carrying forward from Phase 5
-or a SPEC-required constraint that has no design degree of freedom.
+**Seventeen locked decisions.** Ten partner-independent disciplines
+(carried forward from Phase 5 + Phase 6 SPEC-required shape). Seven
+strategic locks from the 2026-05-24 audit-and-decide session.
 
-1. **Phase 6 frame: Automation is in Phase 6.** SPEC line 564 names
-   Automation as a Phase 6 module. The frame final commit (Frame 1
-   literal / Frame 2 split / Frame 3 reorder around payments) is
-   PENDING (§0.6). What is locked tonight: whichever frame is picked,
-   Automation is included.
+### Partner-independent disciplines
+
+1. **Phase 6 frame: AI engine spine, no companion modules.** Frame 2
+   from Section 1 of PHASE_6_AUDIT_DRAFT.md, revised — the audit's
+   suggestion was Automation as spine; the audit-and-decide session
+   inverted to AI as spine. Reasoning: SPEC line 221 names AI as
+   product positioning ("AI Operating System for Multifamily Property
+   Management"); AI is the headline differentiator; AI infrastructure
+   is already mostly shipped (per Section 3 audit key findings); a
+   single-spine phase ships faster than a two-module phase. Automation,
+   Inspections, Amenities defer to Phase 7+.
 
 2. **Discipline carried forward from §13.5 — SECURITY DEFINER for
    junction-mediated chain walks.** Any Phase 6 RLS branch that walks
    a junction-mediated chain across other RLS-protected tables must
    use a SECURITY DEFINER helper rather than an inline EXISTS
-   subquery. The recursion incident in slice 10e (mutual recursion
-   across units ⇄ leases ⇄ rent_charges ⇄ payments via inline
-   EXISTS) codified this; the 6 helpers added in migration
-   `20260603000200_phase5_owner_portal_recursion_fix.sql`
-   (`user_can_see_property/_unit/_building/_lease/_rent_charge/_payment`)
-   are the precedent. Phase 6 inherits this discipline.
+   subquery. The recursion incident in slice 10e codified this; the
+   6 helpers in migration `20260603000200_phase5_owner_portal_recursion_fix.sql`
+   are precedent. Phase 6 introduces fewer junction-mediated chains
+   than Phase 5 (AI engine doesn't add new portals), but the discipline
+   binds regardless.
 
-3. **Walk-before-push discipline.** Every slice ends with walk-test on
-   Vercel Preview before push to `origin`. The §13.5 Phase 5 slice
-   sign-offs all reflect this; Phase 6 maintains.
+3. **Walk-before-push discipline.** Every slice ends with walk-test
+   on Vercel Preview before push to `origin`. Phase 5 §13.5 slice
+   sign-offs reflect this; Phase 6 maintains.
 
 4. **Audit-first authoring.** Every slice begins with a read-first
-   audit (in conversation, not necessarily a written file) before code
-   is written. Phase 5 §10.x slice sign-offs each documented a §0.5
-   decision-locking audit; Phase 6 maintains. For slices with novel
-   patterns (any AI vendor integration, any new cron path, any new
-   junction-mediated RLS), the audit becomes a written scratch
-   document analogous to PHASE_6_AUDIT_DRAFT.md sections.
+   audit before code is written. For Phase 6 slices with novel patterns
+   — the LLM client wrapper, the rate-limit mechanism, prompt-injection
+   protection — the audit becomes a written scratch document analog of
+   PHASE_6_AUDIT_DRAFT.md sections.
 
-5. **Single-source-of-truth helpers.** Any computed value with
-   cross-slice consumers gets a helper in `src/lib/data/*` consumed by
-   every view. Established precedent: `computeChargeBalance` /
-   `computeTenantBalance` / `computeTenantAging` from Phase 5. Phase 6
-   anticipates analogous helpers for: AI-action eligibility decisions
-   (already exists as `canRunAutomationAction`); automation run state
-   summaries; inspection completion state; amenity availability
-   computation. NO ad-hoc duplication in page-level components.
+5. **Single-source-of-truth helpers.** Established Phase 5 precedent:
+   `computeChargeBalance` / `computeTenantBalance` / `computeTenantAging`.
+   Phase 6 analogous helpers: rate-limit eligibility check
+   (`canCallAi(orgId)` or similar); cost-tracking accessor; AI-call
+   context assembler. NO ad-hoc duplication in page-level components.
 
 6. **Audit packet acceptance must inventory new service-role bypass
-   paths.** Phase 5 §13.3 asserted "Phase 5 added zero new
-   service-role bypass paths." Phase 6 will add at least one
-   (Automation runner — almost certainly admin-client throughout per
-   the §I lean in Section 2 of the audit). Possibly two (AI runtime
-   if AI provider calls need server-only context). The §14 sign-off
-   must inventory these explicitly, mirroring §13.3 structure.
+   paths.** Phase 5 §13.3 asserted "Phase 5 added zero new service-role
+   bypass paths." Phase 6 adds at minimum one — the LLM client wrapper
+   may route through admin client for ai_logs writes, though if it
+   stays inside `logAiAction()` the existing B.x bypass covers it.
+   §14.3 must inventory each explicitly.
 
 7. **Cumulative RLS regression run required after any drop-and-recreate
-   on existing `_select` policies.** Suite 14 + Suite 15 (R1-R7
-   recursion-safety class from slice 10e) form the binding floor; new
-   Phase 6 suites extend, never replace. R# assertions extend with new
-   numbering if Phase 6 adds new RLS-gated tables that participate in
-   junction-mediated portal chains (likely candidates: Inspections
-   owner-portal-visible chain; Amenities tenant-self chain).
+   on existing `_select` policies.** Suite 1-15 (238 assertions
+   baseline) form the binding floor. Phase 6 likely adds Suite 16
+   for `is_ai_actor()` RESTRICTIVE coverage. R1-R7 recursion-safety
+   class extends with R8+ if new SECURITY DEFINER helpers are added.
 
-8. **AI safety — SPEC Gate 2 shape is locked; implementation is
-   PENDING.** The 5 ai_modes enum, deny-by-default posture,
-   `canRunAutomationAction` chokepoint, `ai_logs` writing contract,
-   and the 6 prohibited AI behaviors are all SPEC-required and
-   non-negotiable. **The shape is locked.** What is PENDING is the
-   real LLM integration (vendor, model, API key plumbing, cost
-   tracking) — that's §0.6.
+8. **AI safety — SPEC Gate 2 shape is locked, and the implementation
+   is now also locked** (was PENDING in scaffold). The 5 ai_modes,
+   deny-by-default posture, `canRunAutomationAction` chokepoint, and
+   `ai_logs` writing contract bind. Phase 6 adds: cost tracking columns
+   to ai_logs (decision 14); rate limiting at 10 calls/min/org
+   (decision 15); `is_ai_actor()` RESTRICTIVE policy on financial
+   tables (decision 13).
 
-9. **Email safety — Gate 3 anti-loop discipline.** SPEC line 82:
-   "Prevent automation loops from sending repeated emails." Every
-   email-emitting automation must call Phase 3's `checkRecentDuplicate`
-   helper (`src/lib/email/log.ts`) or an equivalent
-   per-recipient-per-template-per-recent-window dedup check.
-   Auto-charge-generation in Automation slice 1 has zero email side
-   effect, so this discipline binds only on later slices that ship
-   email-emitting automations (receipts, statement-ready, tour
-   confirmations, etc.).
+9. **Email safety — Gate 3 anti-loop discipline.** Phase 6 ships zero
+   email-emitting automations (Automation engine deferred). Gate 3
+   surface stays unchanged in Phase 6. The discipline binds only when
+   email-emitting work resumes in Phase 7+.
 
-10. **`AI_AUTOMATION_SAFETY.md` must be current by Phase 6 close.**
-    The file exists (60 lines, Phase 1). Phase 6 extends it with:
-    §7 Phase 6 status (which AI surfaces shipped, which model used,
-    cost-tracking posture); §8 production-readiness checklist closure
-    (the existing §6 "before enabling AI in production" items);
-    possibly §9 prompt-injection / output-sanitization discipline if
-    tenant-facing AI ships in Phase 6. Which slice authors the
-    extensions (Automation, AI, or a dedicated docs slice) is
-    PENDING — surfaced in §0.6.
+10. **`AI_AUTOMATION_SAFETY.md` extensions must land in Phase 6.1.**
+    The file exists (60 lines). Phase 6.1 extends with §7 Phase 6
+    status (AI surface shipped, model used, cost-tracking posture);
+    §8 production-readiness checklist closure (the §6 "before enabling
+    AI in production" items). §9 prompt-injection / output-sanitization
+    discipline added when the first tenant-facing surface ships (likely
+    Phase 6.3 or later).
 
-These ten decisions are locked. The eight in §0.6 are not.
+### Strategic decisions locked 2026-05-24
+
+11. **AI is the spine, not Automation.** Strategic inversion of the
+    audit's lean. Reasoning: AI is the product differentiator per SPEC
+    line 221; AI without Automation feels narrower than Automation
+    without AI (audit framing was right about the architectural
+    coupling), but ship-narrow-and-fast on AI alone is honest about
+    Phase 6 scope. Automation engine moves to Phase 7+ as a standalone
+    workstream with its own scaffold-and-lock cycle.
+
+12. **AI vendor: Anthropic Claude via Vercel AI SDK.** Default model
+    Claude Sonnet (current production-class model). Vercel AI SDK
+    provides provider-agnostic abstraction so future vendor diversification
+    requires only config changes. SPEC line 199 explicitly co-mentions
+    OpenAI/Claude; Anthropic chosen for: (a) strong long-context
+    reasoning relevant to PMS use cases (lease analysis, message
+    threading); (b) safety posture alignment with the per-tenant data
+    sensitivity profile; (c) Claude is the AI being used to build
+    this product — operational symmetry. The Vercel AI SDK keeps the
+    door open to add OpenAI/other providers later without code rewrites.
+
+13. **`is_ai_actor()` RESTRICTIVE policy ships in Phase 6.1.** Tables
+    protected: `rent_charges` + `payments` (per §13.9 explicit wording).
+    Detection mechanism: passive (D4 lean from Section 3 §D) backed by
+    RESTRICTIVE policy as defense-in-depth. AI surfaces in Phase 6 do
+    NOT construct write paths to financial tables; the RESTRICTIVE
+    policy guarantees that even a future migration accident cannot
+    enable one. The helper itself returns `false` for all current
+    code paths since no `is_ai_actor` claim/setting is currently set;
+    activating real AI write surfaces in Phase 7+ would require
+    explicit work to flip the detection mechanism.
+
+14. **AI cost-tracking columns on `ai_logs`** ship in Phase 6.1:
+    `tokens_input int`, `tokens_output int`, `cost_cents int`,
+    `model_name text`. Migration adds the columns; `logAiAction()`
+    signature extends to accept optional cost-tracking values; the
+    LLM client wrapper computes them from provider response metadata
+    and passes them through. NO retroactive backfill of existing rows
+    — existing placeholder-triage rows have NULL in the new columns,
+    which is correct (no LLM cost was incurred).
+
+15. **Rate limiting at 10 calls/min/org.** Implementation seam: extend
+    `canRunAutomationAction` (or add a paired helper, TBD at slice
+    audit time) to count ai_logs rows in the last 60 seconds for the
+    target org; deny if ≥10. NO hard monthly cap. Calls beyond the
+    rate-limit return `{ allowed: false, reason: 'rate_limited' }` and
+    are still logged to ai_logs with `status='blocked'` per existing
+    pattern. UI surfaces this as "AI is busy — try again shortly."
+
+16. **First AI surface: maintenance triage** (Phase 6.1). Replace
+    `runPlaceholderTriage()` body with a real Claude Sonnet call;
+    the function signature and return shape stay identical so the
+    caller (`runMaintenanceTriage` server action) needs no changes
+    beyond the cost-tracking metadata wire-through. The existing
+    `maintenance-triage-card.tsx` UI on `/maintenance/[id]` becomes
+    the live demo surface immediately on slice 11a merge.
+
+17. **PAYMENTS FULL deferred to future unnumbered phase.** NOT
+    Phase 7 specifically — Phase 7 scope is open pending Phase 6
+    partner signal. PAYMENTS FULL has 8 §13.6 deferral items but
+    SPEC explicitly does not name it. The audit's Frame 3 (reorder
+    around payments) is rejected. Architecturally, PAYMENTS FULL
+    receipt emails want trigger→action shape that needs Automation
+    engine first; the natural ordering is PAYMENTS FULL after at
+    least one Automation slice has shipped.
+
+18. *(reserved for future SECURITY_REVIEW.md §14 decision capture)*
+
+These eighteen entries are the §0.5 lock-in. None deviate during
+slice execution without re-opening this section.
+
+### Cross-cutting discipline: §13.6 opportunistic inclusion
+
+**Decision (locked)**: Phase 6 slices MAY include items from the
+33-item §13.6 + §12.6 + §11.5 deferral lists when adjacent to the
+slice's primary scope. Adjacency discipline (binding):
+
+- Each slice audit must explicitly enumerate which §13.6 items are
+  being folded in, with one-line justification per item.
+- "While I'm in this file anyway" is acceptable adjacency.
+- "It's a small extra feature" is NOT acceptable adjacency.
+- Scope additions that would push slice size beyond ~25 files are
+  rejected at audit time; deferred to their own slice instead.
+
+This discipline is binding throughout Phase 6 execution.
 
 ## 0.6. PENDING decisions awaiting partner feedback
 
-Eight decisions explicitly held open. Each lists what the dependency
-is, what audit it surfaced in, and what the lean was — without
-committing to the lean.
+**Near-empty.** All seven previously-active §0.6 decisions are locked
+in §0.5 above. One open question remains, and it is explicitly held
+open until Phase 6 ships:
 
-### 1. Frame final commit
+### 1. Phase 7 scope
 
-**Decision**: Frame 1 (literal SPEC, all 4 modules in Phase 6) /
-Frame 2 (split: Automation + one companion in Phase 6, the rest in
-Phase 7) / Frame 3 (reorder: Phase 6 = PAYMENTS FULL, defer
-Automation+AI+Inspections+Amenities to Phase 7).
+**Decision**: which deferred modules (Automation engine, Inspections,
+Amenities, PAYMENTS FULL) ship in Phase 7, in what order, and against
+what frame.
 
-**Depends on**: sales motion shape (AI as headline positioning vs.
-operational discipline as differentiator); risk tolerance for one
-phase (Frame 1 is the largest phase to date); whether SPEC is
-treated as binding (Frame 3 deviates explicitly).
+**Depends on**: Phase 6 ship signal; sales-motion learnings from
+shipping AI; relative urgency of each deferred module from partner
+conversation; whether SPEC line 564 is treated as binding (in which
+case Phase 7 must complete the line's remaining three modules) or
+as guidance (in which case PAYMENTS FULL can absorb Phase 7).
 
-**Audit reference**: PHASE_6_AUDIT_DRAFT.md Section 1, "Honest
-framings" subsection.
+**Audit reference**: PHASE_6_AUDIT_DRAFT.md Section 1, "Honest framings"
+subsection (Frame 1 / 2 / 3). Frames 1 and 2 carry forward to Phase 7
+sequencing with the same shape — pick which deferred modules belong
+together. Frame 3 (PAYMENTS FULL spine) remains available for Phase 7+.
 
-**Lean**: Frame 2 (split). Reasons surfaced in audit: AI without
-Automation feels worse than Automation without AI (scheduled AI
-summaries depend on cron); 6 different AI surfaces is hard to scope
-tightly; the audit consistently found Inspections + Amenities as
-narrower-than-AI candidates. **Not committed.**
-
-### 2. Companion module(s) alongside Automation
-
-**Decision**: Inspections / Amenities / AI engine foundation / two
-of the three / all three (= Frame 1).
-
-**Depends on**: §0.6.1 frame lock; whether the team has bandwidth
-for two parallel module workstreams or wants serial; demoability
-priorities.
-
-**Audit reference**: PHASE_6_AUDIT_DRAFT.md Sections 2/3/4/5 each
-catalog one candidate; Section 1 dependency graph shows
-Inspections and Amenities as fully independent of Automation/AI.
-
-**Lean**: Section 5 (Amenities audit) noted Amenities ranks lowest
-in slice-1 risk among the four candidates (no AI dependency, no
-automation dependency, no financial coupling, clean precedent via
-Phase 3 tenant portal + work_order_photos). Section 4 (Inspections)
-ranked second-lowest. Section 3 (AI) noted the AI engine
-infrastructure is already mostly shipped, making slice 1 a smaller
-file inventory than naïvely assumed. **Not committed.**
-
-### 3. Cron substrate choice
-
-**Decision**: Vercel Cron / pg_cron / Inngest / Trigger.dev / other.
-
-**Depends on**: current Supabase plan (whether pg_cron is enabled);
-willingness to add a vendor dependency (Inngest/Trigger.dev cost);
-production observability requirements; team preference for
-DB-native vs. application-runtime scheduling.
-
-**Audit reference**: PHASE_6_AUDIT_DRAFT.md Section 2, §A.
-
-**Lean**: Vercel Cron for simplicity unless partner feedback
-indicates production-scale ops requirements pushing toward Inngest.
-**Not committed.**
-
-### 4. AI vendor choice
-
-**Decision**: OpenAI / Anthropic / both (via Vercel AI SDK
-abstraction) / self-hosted.
-
-**Depends on**: cost ceiling per-org per-month at scale; preferred
-model quality tier (Haiku/Sonnet/Opus or GPT-4o-mini/4o/4); whether
-provider flexibility from day one is valued.
-
-**Audit reference**: PHASE_6_AUDIT_DRAFT.md Section 3, §A.
-
-**Lean**: Vercel AI SDK with Anthropic Claude Sonnet as default
-model. Provider-agnostic abstraction lets future-Phase migration
-happen with config flag. **Not committed.**
-
-### 5. First AI surface in slice 1
-
-**Decision**: F1 infrastructure-only (replace nothing; mode
-elevation UI + LLM client + is_ai_actor() RESTRICTIVE) / F2
-infrastructure + real triage (replace `runPlaceholderTriage` with
-real LLM call) / F3 infrastructure + summaries / F4 infrastructure
-+ message drafting / something else.
-
-**Depends on**: §0.6.4 vendor lock; UI demoability priorities;
-tenant-facing AI risk tolerance (message drafting is tenant-facing,
-introduces prompt injection surface).
-
-**Audit reference**: PHASE_6_AUDIT_DRAFT.md Section 3, §F.
-
-**Lean**: F2 — replace placeholder maintenance triage with real
-LLM. Smallest UI footprint (placeholder UI already shipped),
-clearest end-to-end pattern validation, lowest-risk surface
-(`suggest` action type, never auto-acts). **Not committed.**
-
-### 6. AI cost economics
-
-**Decision**: free for all orgs / per-org monthly quota / paid-tier
-gate / cost-recovery passthrough / hybrid.
-
-**Depends on**: pricing model partner conversation; expected
-per-org AI call volume; provider-cost forecasting at scale.
-
-**Audit reference**: PHASE_6_AUDIT_DRAFT.md Section 3, §G.
-
-**Lean**: free for all orgs at slice-1 scale; per-org quota
-shipped in metadata for future monetization but not enforced in
-slice 1. **Not committed.**
-
-### 7. PAYMENTS FULL inclusion in Phase 6
-
-**Decision**: defer (Phase 6 = SPEC literal) / include (replaces
-or augments Phase 6 per Frame 3) / partial inclusion (e.g., just
-processor integration; defer reconciliation).
-
-**Depends on**: SPEC binding-ness (deviating from SPEC line 564 is
-a strategic call); sales-motion need for online rent collection;
-willingness to add PCI scope to the codebase.
-
-**Audit reference**: PHASE_6_AUDIT_DRAFT.md Section 1, Frame 3 +
-Candidate C.
-
-**Lean**: defer per SPEC. PAYMENTS FULL is the biggest single
-deferral bucket (8 §13.6 items) but SPEC explicitly does not name
-it as Phase 6. Architecturally degrades if shipped without
-Automation (per Section 1's "depends on" subsection — receipt
-emails want trigger→action shape). **Not committed.**
-
-### 8. §13.6 opportunistic inclusion in Phase 6 slices
-
-**Decision**: opportunistically fold UI-polish items from §13.6
-(voided charges on tenant Rent tab, printable tenant statement,
-CSV export, etc.) into Phase 6 slices when natural / defer all to
-a future Phase 5.5 cleanup release / never (let Phase 6 stay
-focused on SPEC).
-
-**Depends on**: bandwidth perception; whether the UI polish is
-load-bearing for any Phase 6 demo / sales conversation.
-
-**Audit reference**: PHASE_6_AUDIT_DRAFT.md Section 1, "Design-
-pending / walk-test feedback" bucket (8 items) + "Scope-bounded
-gaps" bucket (25 items).
-
-**Lean**: opportunistic. Most are small. Embed when natural
-("while I'm in the rent-tab component anyway, add the voided-
-charges display"). Reject scope additions that would meaningfully
-extend a slice. **Not committed.**
+**Lean**: not committed. Re-audit Phase 7 problem space when Phase 6
+closes.
 
 ---
 
-These eight PENDING decisions block full slice scoping. §1-§N
-below sketches Phase 6.1 (Automation foundation) as if Frame 2
-holds with Automation as the spine; subsequent slices are
-explicitly marked DRAFT awaiting §0.6 lock.
+That is the entire §0.6 surface. Slice execution proceeds against
+§0.5 lock-in alone.
 
 ## 1. SCOPE
 
-### What SPEC says Phase 6 includes
+### What SPEC says Phase 6 includes (as deviated and locked)
 
-The eleven bullets across AUTOMATION ENGINE (1) / AI LAYER (6) /
-INSPECTIONS (3) / AMENITIES (2) — quoted verbatim in §0. Plus the
-Gate 2 + Gate 3 + SPEC-line-100 + SPEC-line-465 cross-cutting
-constraints.
+Six AI surfaces from SPEC AI Layer (line 411-416):
+- Maintenance triage (Phase 6.1 — replaces existing placeholder)
+- Summaries (Phase 6.2 lean — see §8)
+- Reporting insights, Vendor suggestions, Message drafting, Leasing
+  assistant (Phase 6.3+ — order TBD at per-slice audit)
 
-### What SPEC says Phase 6 does NOT include
+Plus Gate 2 + Gate 3 + AI_AUTOMATION_SAFETY.md updates + SPEC line 465
+RESTRICTIVE structural enforcement.
 
-- Online payment processing / processor integration / refunds /
-  reconciliation / PCI compliance scope (PAYMENTS FULL — separately
-  unnumbered future phase per SPEC; surfaced in §0.6.7 PENDING).
-- Lease renewals workflow (Phase 4 §12.6 deferral; not a Phase 6
-  module per SPEC).
-- Document management (`/documents` nav slot remains
-  `enabled: false`; SPEC names it as a top-level module but not in
-  Phase 6).
+### What SPEC says Phase 6 does NOT include (post-deviation)
+
+- Automation engine — deferred to Phase 7+ per §0.5 decision 11
+- Inspections — deferred to Phase 7+ per §0.5 decision 1
+- Amenities — deferred to Phase 7+ per §0.5 decision 1
+- PAYMENTS FULL — deferred to future unnumbered phase per §0.5
+  decision 17
+- All §13.6 items NOT routed to Phase 6 AI destination — stay
+  deferred (Automation-destination items move to Phase 7+ destination)
 
 ### Phase 1-5 integration touchpoints
 
-PHASE_6_AUDIT_DRAFT.md Section 2's "Pre-existing infrastructure"
-subsection enumerates the Phase 1 staging that Phase 6 builds on:
+Per PHASE_6_AUDIT_DRAFT.md Section 3 "What already exists":
 
-- `automation_logs` + `ai_logs` (Phase 1)
-- `organizations.ai_mode` enum column (Phase 1)
-- `canRunAutomationAction` central permission function (Phase 1)
-- `logAiAction` admin-client writer (existing)
-- `runMaintenanceTriage` server action with full gate→run→log→persist
-  pattern (existing; placeholder model)
-- `work_order_photos` precedent + `WORK_ORDER_PHOTO_BUCKET` private
-  storage pattern (Phase 2 — direct template for Inspections photos)
-- `setings.module:<name>.enabled` per-module enablement pattern
-  (Phase 1; consumed by canRunAutomationAction)
-- `endLease()` action (Phase 3) — natural hook for move-out
-  inspection auto-creation
-- `create_lease_with_tenants` RPC (Phase 3+4) — natural hook for
-  move-in inspection auto-creation
-- Owner portal SECURITY DEFINER helper precedent (Phase 5 §13.5) —
-  binding pattern for any Phase 6 owner-portal-visible new table
+- `organizations.ai_mode` (Phase 1) — Phase 6 wires real elevation
+  UI; defaults remain `disabled`
+- `ai_logs` (Phase 1) — Phase 6.1 adds cost-tracking columns
+- `canRunAutomationAction` (Phase 1) — Phase 6.1 extends with rate-
+  limit semantics
+- `logAiAction` (existing) — Phase 6.1 signature extends with cost
+  metadata
+- `runPlaceholderTriage` / `runMaintenanceTriage` /
+  `maintenance-triage-card.tsx` (existing) — Phase 6.1 swaps the
+  model body; surrounding surface unchanged
+- `rent_charges` + `payments` (Phase 5) — Phase 6.1 adds RESTRICTIVE
+  policy keyed on `is_ai_actor()`
+- `AI_AUTOMATION_SAFETY.md` (Phase 1) — Phase 6.1 extends with §7-§8
 
 ## 2. NEW TABLES AND COLUMNS
 
-**FULL SCHEMA SHAPES ARE DRAFT** — locked at per-slice authoring
-time per audit-first discipline (§0.5 decision 4).
+Detail-level shapes lock at per-slice audit time. Probable Phase 6
+schema delta:
 
-Probable new tables, by candidate slice:
+### 2a. `ai_logs` cost-tracking columns (Phase 6.1)
 
-- **Automation slice** — `automations`, `automation_runs` (sketched
-  in Section 2 of audit, §B1 + §I2 leans)
-- **AI slice** — possibly `ai_logs` cost-tracking columns
-  (`tokens_input`, `tokens_output`, `cost_cents`, `model_name`)
-  per Section 3 §E; possibly migration for `is_ai_actor()` helper
-  + RESTRICTIVE policies on `rent_charges` + `payments` per Section
-  3 §D (§13.9 deferral)
-- **Inspections slice** — `inspections`, `inspection_items`,
-  possibly `inspection_photos` per Section 4 §A1 lean
-- **Amenities slice** — `amenities`, `amenity_reservations`,
-  `amenity_blackouts` per Section 5 §A1 lean; requires `btree_gist`
-  Postgres extension for the EXCLUDE constraint per §A4c lean
+```sql
+alter table public.ai_logs
+  add column tokens_input int,
+  add column tokens_output int,
+  add column cost_cents int,
+  add column model_name text;
+```
 
-## 3. NEW RLS SHAPES (DRAFT)
+All nullable (existing rows have no LLM call to track). Indexed only
+if reporting queries demand it (TBD at slice audit).
 
-**FULL POLICY SHAPES ARE DRAFT** — locked at per-slice authoring.
+### 2b. `is_ai_actor()` helper function (Phase 6.1)
 
-Anticipated novel patterns:
+```sql
+create or replace function public.is_ai_actor() returns boolean
+  language sql stable security definer as $$
+  select coalesce(
+    current_setting('app.is_ai_actor', true)::boolean,
+    false
+  );
+$$;
+```
 
-- **Automation runner** likely runs through admin client (§I lean
-  in Section 2). Not RLS-policy work; service-role bypass inventory
-  per §0.5 decision 6.
-- **`is_ai_actor()` RESTRICTIVE policy** on `rent_charges` +
-  `payments` — Section 3 §D. The §13.9 deferral. Mechanism
-  (D1 JWT claim / D2 Postgres setting / D3 service-account /
-  D4 passive-no-write-path) is itself PENDING and surfaced for
-  partner conversation.
-- **Inspections owner-portal-visible chain** — junction-mediated
-  through `property_owners` (Phase 5 helper precedent). New
-  SECURITY DEFINER helper: `user_can_see_inspection(inspection_id)`.
-  Binding per §0.5 decision 2.
-- **Inspections tenant-self chain** — through tenants→leases.
-  Phase 3 helper precedent applies.
-- **Amenities tenant-self chain** — new SECURITY DEFINER helper:
-  `tenant_can_book_amenity(amenity_id)` per Section 5 §D2. Verifies
-  caller is tenant with active lease AND amenity's property matches.
+Returns `false` for all current code paths (no setting is currently
+flipped). The function exists to be the RESTRICTIVE-policy seam; real
+detection mechanism activation deferred to whenever an AI write path
+to financial tables is built (not in Phase 6).
+
+### 2c. No other column changes anticipated in Phase 6
+
+The maintenance triage already persists to `maintenance_requests.ai_triage`
++ `ai_triaged_at` (existing columns from Phase 2 staging). Other AI
+surfaces persist to their own jsonb columns on their respective tables
+— scoped at per-slice audit.
+
+## 3. NEW RLS SHAPES
+
+### 3a. `is_ai_actor()` RESTRICTIVE policy on `rent_charges` + `payments`
+
+```sql
+create policy rent_charges_no_ai_writes on public.rent_charges
+  as restrictive
+  for all to authenticated
+  using (not public.is_ai_actor())
+  with check (not public.is_ai_actor());
+
+-- analog for payments
+```
+
+The RESTRICTIVE policy ANDs with all existing PERMISSIVE policies.
+Today `is_ai_actor()` always returns false, so the policy is a no-op;
+when real AI write detection ships, the policy blocks any AI-actor
+write attempt structurally.
+
+### 3b. Rate-limit policy (Phase 6.1)
+
+NOT an RLS policy — implemented at the application layer in the
+helper that wraps `canRunAutomationAction`. RLS continues to allow
+the ai_logs write; the rate-limit check is a same-transaction count
+query before the write happens. Exact mechanism (extend the existing
+helper vs. add a paired one) TBD at Phase 6.1 audit.
+
+### 3c. No new junction-mediated chains in Phase 6
+
+AI engine doesn't add new portals or new entity types. The §13.5
+SECURITY DEFINER discipline binds but has no new Phase 6 invocations
+to enforce against.
 
 ## 4. NEW GATES
 
-- **SPEC Gate 2** — AI/Automation Control Gate. Already implemented
-  per pre-existing `canRunAutomationAction`. Phase 6 wires real
-  call sites: AI surfaces, Automation runner.
-- **SPEC Gate 3** — Email anti-loop. Phase 6 extends Gate 3 only
-  when email-emitting automations ship (per §0.5 decision 9).
-- **No new gates** introduced by Phase 6 per current SPEC reading.
-  PAYMENTS FULL would introduce Gate 5; deferred per §0.6.7.
+- **SPEC Gate 2** — already implemented; Phase 6 wires real call
+  sites for the first time (maintenance triage gets a real LLM
+  behind the gate)
+- **SPEC Gate 3** — Phase 6 ships zero email-emitting paths;
+  surface unchanged
+- **No Gate 5** — PAYMENTS FULL deferred per §0.5 decision 17
+- **No new gates introduced**
 
-## 5. SERVER ACTIONS AND UI SURFACE (DRAFT)
+## 5. SERVER ACTIONS AND UI SURFACE
 
-Per-slice ordering and detail TBD. See §8.
+Per-slice. See §8 for slice ordering. Detail locks at per-slice audit.
 
-## 6. TEST STRATEGY (DRAFT)
+Phase 6 anticipates limited UI changes beyond per-AI-surface widgets:
+- AI mode elevation UI on `/settings/ai` (Phase 6.1)
+- Cost monitoring view (probably an admin surface on `/settings/ai`
+  or `/admin` — TBD)
+- No new top-level routes; no nav.ts changes
 
-**One or more new RLS test suites**, extending the Suite 1-15
-cumulative floor (238 assertions baseline post-Phase 5).
+## 6. TEST STRATEGY
 
-Probable new suites:
+### Cumulative floor
+
+Suites 1-15 (238 assertions) remain binding. Phase 6 adds:
 
 | Suite | Proves | Estimated size |
 |---|---|---|
-| Suite 16 (Inspections) | Staff CRUD; tenant-self read + acknowledge; investor read-only scoped to owned properties (junction-mediated); cross-org denial; sign-off lock | ~25-30 assertions |
-| Suite 17 (Amenities) | Staff CRUD; tenant-self book gated by active lease; EXCLUDE constraint conflict rejection; blackout block; cross-property denial; cross-org denial; manager approve/deny path | ~25-35 assertions |
-| Suite 18 (Automation runner authorization) | Admin-client invocation only; canRunAutomationAction integration; automation_logs write paths | ~15-20 assertions |
-| Suite 19 (AI engine + is_ai_actor) | Mode elevation OWNER-only; ai_logs writing; RESTRICTIVE policy denies AI write to rent_charges + payments | ~15-25 assertions |
+| Suite 16 (AI write-path RESTRICTIVE) | `is_ai_actor()` RESTRICTIVE policy denies writes to `rent_charges` + `payments` when actor setting flipped; allows writes when not flipped; PERMISSIVE policies unaffected for non-AI writes | ~10-15 assertions |
+| Suite 17 (rate-limit enforcement) | 10/min/org rate limit blocks at 11th call within rolling 60s window; resets after window passes; cross-org isolation (org A's calls don't count against org B's quota); ai_logs blocked-status row written for rate-limited calls | ~8-12 assertions |
 
-**Cumulative floor after Phase 6 close**: ~318-348 assertions across
-~19 suites (up from 238 / 15 suites).
+**Suites for cost-tracking columns**: not needed. Adding nullable
+columns to an existing table is covered by the existing ai_logs
+suite implicitly; no new RLS surface.
 
-**Phase 5 R1-R7 recursion-safety class** is binding floor; any new
-helpers added in Phase 6 (likely Inspections + Amenities) extend
-the class with R8+ assertions per §0.5 decision 7.
+**Cumulative floor after Phase 6 close**: ~256-265 assertions across
+17 suites (up from 238 / 15 suites). Smaller delta than Phase 5
+(57 assertions added) because Phase 6 introduces no new tables — only
+column additions and a single helper function.
 
-UUID prefixes (pre-flight uniqueness check required at slice
-authoring): probable assignments `g1` (Inspections), `h1`
-(Amenities), `i1` (Automation), `j1` (AI) — actual assignment locks
-at per-suite authoring after grep confirms no collision.
+### AI-specific testing concerns (non-RLS)
+
+These run at the app layer, not in the SQL test suites:
+
+1. **Structured output schema validation**. LLM responses are parsed
+   against a Zod (or similar) schema before being persisted or
+   surfaced. Schema-violation responses route to error path; the
+   ai_logs entry is written with `status='blocked'` + reason. Test
+   shape: unit tests with mocked LLM responses spanning happy path,
+   malformed JSON, schema-violation, hallucinated fields, empty
+   response.
+
+2. **Prompt injection resistance** (binding when tenant-facing surfaces
+   ship). Tenant-controlled content (message body, maintenance request
+   description) must be embedded as data, not instruction. Test shape:
+   adversarial prompts injected into tenant inputs; assert the model
+   does not deviate from its system instruction.
+
+3. **Rate-limit verification end-to-end**. Spin up a test org; send
+   11 AI calls within 60 seconds; assert the 11th returns rate-limited;
+   assert ai_logs has 10 successful + 1 blocked entries; wait past
+   the window and assert the next call succeeds.
+
+4. **Cost tracking accuracy**. For a sampled LLM call, the tokens_input,
+   tokens_output, cost_cents written to ai_logs match the provider's
+   billing dashboard within ±1%. Walk-test, not automated.
+
+5. **Multi-tenancy isolation in prompt construction**. Helper that
+   assembles context for an AI call must assert it has been scoped
+   to exactly one org_id; prompt assembly that loads cross-org data
+   throws. Test shape: unit test asserting the assembler throws when
+   passed mixed-org data.
+
+### Regressions to re-verify
+
+- All 15 existing suites after Phase 6.1 lands (RESTRICTIVE policy
+  changes the rent_charges + payments RLS posture; verify all 15
+  existing suites still pass)
+- Particular attention: Suite 14 (Phase 5 entities) — rent_charges +
+  payments now have additional RESTRICTIVE policy ANDing; verify all
+  existing positive assertions still pass
 
 ## 7. RISKS AND OPEN QUESTIONS
 
-Four genuine risks carried forward from Phase 5 + new Phase 6 risks.
+Four inherited Phase 5 disciplines + five AI-specific risks.
 
-### Risks inherited from Phase 5 discipline
+### Inherited Phase 5 disciplines
 
 1. **Junction-mediated portal isolation recursion risk.** Slice 10e
-   incident is the precedent (mutual recursion via inline EXISTS).
-   Resolution: SECURITY DEFINER helpers mandatory per §0.5 decision
-   2. Phase 6 Inspections + Amenities will likely introduce new
-   helpers (`user_can_see_inspection`, `tenant_can_book_amenity`).
-   Test coverage: R8+ assertions in Suite 16/17.
+   precedent. Phase 6 introduces no new junction-mediated chains, so
+   this discipline has nothing to enforce against in Phase 6 — but it
+   stays binding for any helper that does end up walking
+   RLS-protected tables.
 
-2. **Missing nav entry point discipline.** Phase 5 slice 10b shipped
-   a working detail page with no working link path; required
-   follow-up commit `73a26f2` to strip. Phase 6 audit must answer
-   "from where does the user navigate to this surface?" for every
-   new route. Resolution: per-slice audit explicitly enumerates
-   entry points before code lands.
+2. **Missing nav entry point discipline.** Phase 5 slice 10b incident.
+   Phase 6 audits must answer "from where does the user navigate to
+   this AI surface?" for every new widget. Maintenance triage card is
+   already wired (no new nav); AI mode elevation needs a settings-nav
+   slot; cost monitoring UI needs a nav decision per its slice audit.
 
 3. **Pre-flight schema verification discipline.** Phase 5 slice 10f
-   discovered user-claimed enum values (emergency/urgent/normal/low)
-   were wrong; actual enum is low/medium/high/emergency. Phase 6
-   audit must verify enum values, available component props, and
-   existing pattern shapes BEFORE depending on them. Resolution:
-   per-slice audit reads target enum/type definitions verbatim.
+   incident. Phase 6 audits verify Claude SDK response shape, Vercel
+   AI SDK API surface, Zod schema definitions, and the
+   `canRunAutomationAction` return shape before depending on them.
 
 4. **Walk-before-push discipline.** Every slice ends with Vercel
-   Preview walk-test before push to `origin`. Phase 6 maintains.
+   Preview walk-test before push to `origin`.
 
-### New Phase 6-specific risks
+### AI-specific risks
 
-5. **AI cost runaway risk.** Per Section 3 §G: cost economics are a
-   real business concern at scale. Without per-org quota enforcement,
-   a malicious or buggy AI invocation pattern could run up real
-   provider charges. Resolution PENDING per §0.6.6; minimum
-   discipline: every AI call writes `tokens_*` / `cost_cents` to
-   `ai_logs` metadata (or first-class columns per §0.6 lean) for
-   observability even if quota isn't enforced.
+5. **Vendor cost variance.** Claude Sonnet pricing changes outside
+   Anthropic's published predictability would surprise our cost
+   calculus. Resolution: cost columns on ai_logs (decision 14) provide
+   per-call observability; partner-facing cost dashboard surface is
+   a Phase 6.2+ candidate. Rate limit (decision 15) caps catastrophic
+   per-org runaway.
 
-6. **Automation loop risk.** SPEC line 82 explicit. Resolution:
-   §0.5 decision 9 binds — `checkRecentDuplicate` enforcement on
-   email-emitting paths. Plus loop-prevention mitigations D1+D2
-   from Section 2 §D (idempotency key + email dedup) baseline; D4
-   (runtime cap) added if email-emitting automations ship.
+6. **Prompt injection on tenant-facing surfaces.** Maintenance triage
+   (Phase 6.1) consumes staff-controlled and tenant-controlled inputs
+   (request description is tenant-authored). Mitigation in Phase 6.1:
+   structured prompt template that embeds tenant content with explicit
+   delimiters + system instruction that explicitly treats tenant-
+   authored fields as data. Tenant-facing AI surfaces (message
+   drafting, leasing assistant) have higher injection risk and are
+   scoped for later slices where the discipline can be properly
+   audited per-slice. **AI_AUTOMATION_SAFETY.md §9** documents the
+   discipline when the first tenant-facing surface ships.
 
-7. **AI-cannot-modify-financial-data structural enforcement gap.**
-   §13.9 deferred RESTRICTIVE policy on `rent_charges` + `payments`
-   keyed on `is_ai_actor()`. Phase 6 closes this. Detection
-   mechanism (D1/D2/D3/D4 per Section 3 §D) is PENDING. Lean: D4
-   passive (no AI write path constructed) backed by RESTRICTIVE
-   policy as defense-in-depth.
+7. **Output quality variance.** LLM responses are non-deterministic.
+   For triage: the suggested priority/category may differ between
+   identical inputs across calls. This is acceptable for advisory-only
+   surfaces (a human reviews). For any future side-effecting AI surface
+   (still gated by `canRunAutomationAction` per Gate 2), output quality
+   variance becomes a real safety concern. Phase 6 ships only
+   `suggest` / `summarize` / `draft` action types (no side-effecting
+   actions); the auto-with-approval / fully-automated modes are
+   org-config-flippable but no Phase 6 surface enables side-effecting
+   action types by default.
 
-8. **Cron entrypoint authorization.** Section 2 §0.5-decision-15:
-   Vercel Cron must verify `CRON_SECRET` env var on the runner
-   endpoint; pg_cron runs as table owner (privileged); Inngest
-   verifies via webhook signature. Resolution: cron substrate
-   choice (§0.6.3 PENDING) determines mechanism; the resolution
-   itself is non-negotiable.
+8. **Multi-tenancy prompt construction risk.** A bug where prompt
+   assembly mixes data from two orgs leaks data across the tenant
+   boundary. Resolution: §6 testing concern 5 (explicit one-org
+   assertion in the assembler); secondary discipline — every prompt
+   assembler function takes `orgId` as the first required parameter,
+   never inferred from a context object.
 
-## 8. SUGGESTED ORDER OF WORK (DRAFT)
+9. **Structured output parsing fragility.** Claude may return text
+   that fails schema validation. Resolution: Zod schema with `safeParse`
+   + graceful degrade ("AI suggestion unavailable" + ai_logs entry
+   with `status='blocked'` + reason='response_validation_failed').
+   NOT a retry-loop — single attempt; graceful degrade. Retry loops
+   add cost and don't improve reliability for structured-output failures.
 
-**This ordering is DRAFT.** Final slice ordering depends on §0.6
-lock — particularly §0.6.1 (frame) and §0.6.2 (companion modules).
-The shape below sketches Phase 6 under Frame 2 with Automation
-spine + Amenities companion, since Section 5 ranked Amenities as
-the lowest-risk Phase 6 candidate.
+## 8. SUGGESTED ORDER OF WORK
 
-**Slices are sketched in 5-15 lines, NOT the PHASE_5_PLAN.md
-slice-10x depth. Full per-slice scoping locks at per-slice audit
-time.**
+Three slice sketches at Phase 5 plan precedent depth (~30-60 lines
+per slice). Detail-level scoping locks at per-slice audit time.
 
-### Step 0 — Decisions documented (no code)
+### Step 0 — Decisions documented
 
-10 decisions locked in §0.5; 8 decisions PENDING in §0.6. The
-PENDING items lock in a follow-up commit after partner-feedback
-signal arrives. **Currently OPEN.**
+§0.5 closed (18 entries). §0.6 reduced to one entry held open until
+Phase 6 ships. **CLOSED for slice execution.**
 
-### Slice 11a — Automation engine foundation (DRAFT)
+### Phase 6.1 — Maintenance triage with real Claude + foundation infrastructure
 
-**Probable scope** (Section 2 §C2 lean):
-- Migration: `automations` + `automation_runs` tables; FK
-  `automation_logs.automation_id` → `automations.id` (existing
-  nullable column finally non-null); UNIQUE constraint on
-  (automation_id, idempotency_key) per §J K3 lean.
-- Cron substrate: per §0.6.3 PENDING. Probable: Vercel Cron with
-  `CRON_SECRET` env var.
-- `src/lib/automation/runner.ts` — execution loop; admin client
-  per §0.5 decision 6 inventory.
-- `src/lib/automation/handlers/auto-charge.ts` — first concrete
-  consumer; reuses slice 10a's `generateChargesForProperty` logic
-  but cron-driven.
-- `/automations` route group (admin) — list + run history.
-- Sidebar nav: flip Automations from `enabled: false` to `enabled:
-  true` (currently disabled in `src/components/layout/nav.ts`).
-- Walk-test: cron fires hourly; monthly auto-charge runs in test
-  org; idempotency key prevents double-charge.
+**Probable scope** (locks at slice 11a audit):
 
-**Estimated 17-20 files** per Section 2 file inventory.
+- Migration: ai_logs cost columns + `is_ai_actor()` helper +
+  RESTRICTIVE policies on `rent_charges` + `payments`
+- `package.json`: add `ai` (Vercel AI SDK) + `@ai-sdk/anthropic`
+  provider package
+- `src/lib/ai/client.ts` — new. LLM client wrapper. Wraps Vercel AI
+  SDK `generateObject` for structured output. Inputs:
+  `{ system, prompt, schema, model = 'claude-sonnet-current' }`.
+  Outputs: parsed object + cost metadata (tokens_input,
+  tokens_output, cost_cents, model_name).
+- `src/lib/ai/prompts/maintenance-triage.ts` — new. System prompt
+  template + Zod result schema (mirrors existing
+  `MaintenanceTriageResult` shape so caller unchanged).
+- `src/lib/ai/maintenance-triage.ts` — replace `runPlaceholderTriage`
+  body with real Claude call via the client wrapper. Function
+  signature and return shape preserved.
+- `src/lib/data/ai-logs.ts` — extend `logAiAction` params with
+  optional cost fields.
+- `src/lib/auth/permissions.ts` — extend or pair `canRunAutomationAction`
+  with rate-limit semantics (count ai_logs rows in last 60s for org;
+  deny if ≥10).
+- `src/app/(app)/maintenance/triage-actions.ts` — wire cost metadata
+  through to logAiAction; handle the new rate-limited block status.
+- `src/app/(app)/settings/ai/page.tsx` — new. AI mode elevation UI
+  (OWNER-only gate; audit-logged on mode flip).
+- `src/app/(app)/settings/ai/actions.ts` — new. `setAiMode` server
+  action.
+- `src/components/settings/ai-mode-section.tsx` — new. Mode-elevation
+  UI component.
+- `.env.example` — add `ANTHROPIC_API_KEY`.
+- `AI_AUTOMATION_SAFETY.md` — extend with §7 Phase 6 status + revised
+  §8 production-readiness checklist (closing items from §6).
+- Suite 16 (`rls_phase6_ai_restrictive.sql`) — RESTRICTIVE policy
+  coverage.
+- Suite 17 (`rls_phase6_rate_limit.sql`) — rate-limit coverage.
+- `RLS_TEST_PLAN.md` — add Suite 16+17 entries, assertion count bump.
 
-### Slice 11b — Email-triggered automations (DRAFT)
+**Estimated file count**: ~16-18 files. Smaller than Phase 5 slice 10e
+(19 files) because the maintenance triage UI is already shipped.
 
-**Probable scope**:
-- Receipts (`payment.received`), statement-ready
-  (`statement.ready`), charge-created (`charge.created`).
-- Each is an event-triggered automation; trigger seam: subscribe
-  to `audit_logs` entries matching action filter.
-- Email templates author + Gate 3 walk-test through test-mode
-  allowlist (per §0.5 decision 9).
-- Tour confirmations (Phase 4 §12.6 deferral) included opportunistically.
+**Walk-test scope**: AI mode flip from `disabled` to `suggest_only`
+audit-logs the change. Run real maintenance triage on a test request;
+ai_logs entry has tokens_input/tokens_output/cost_cents populated
+from Claude response. Hit rate limit (11 rapid calls); 11th blocks
+with rate-limited reason; ai_logs has 10 suggested + 1 blocked entries.
+Attempt programmatic write to rent_charges with `set_config
+('app.is_ai_actor', 'true', true)` — RESTRICTIVE policy denies.
 
-**Depends on**: slice 11a complete; email infrastructure from
-Phase 3.
+**§13.6 opportunistic candidates eligible per adjacency**: none in
+Phase 6.1. The AI mode elevation UI is the only new staff-facing
+surface and it lives in `/settings/ai`; no §13.6 items are adjacent.
 
-### Slice 11c — [Companion module slice 1] (DRAFT)
+### Phase 6.2 — Second AI surface (probable: Summaries)
 
-**Depends on §0.6.2 lock.** Probable:
-- If Amenities: migration (amenities + amenity_reservations +
-  amenity_blackouts) + RLS + staff `/amenities` + tenant
-  `/portal/amenities`. ~23-25 files per Section 5 file inventory.
-- If Inspections: migration (inspections + inspection_items +
-  inspection_photos) + RLS + lifecycle hooks (move-in via
-  create_lease_with_tenants; move-out via endLease) + staff
-  `/inspections` + tenant `/portal/inspections` (or whatever path
-  is chosen). ~25-27 files per Section 4 file inventory.
-- If AI engine foundation: real LLM client + first surface
-  replacement (probable F2 maintenance triage) + is_ai_actor()
-  RESTRICTIVE + mode elevation UI. ~14-16 files per Section 3
-  file inventory.
+**Probable scope** (locks at slice 11b audit):
 
-### Slice 11d — [Companion module continuation OR AI foundation] (DRAFT)
+- Surface choice: **Summaries** is the leading candidate per Section
+  3 §F. Reasons: high demo value (owner portal + reports get insight
+  cards); internal-facing (no prompt injection surface from tenant-
+  controlled content); reuses Phase 6.1 infrastructure end-to-end;
+  parallel to maintenance triage in shape (`summarize` action type,
+  advisory output).
+- Alternative candidates the audit may surface: **Reporting insights**
+  (analytical, structured; similar shape to Summaries); **Vendor
+  suggestions** (sidebar on /work-orders/[id]; reuses vendor data
+  already in Phase 2).
+- **NOT chosen for slice 11b**: Message drafting (tenant-facing prompt
+  injection risk — defer to a slice with its own AI_AUTOMATION_SAFETY.md
+  §9 audit); Leasing assistant (broader scope; needs leads + activity
+  history context assembly).
+- New helpers per the chosen surface; new prompt template per
+  src/lib/ai/prompts/<surface>.ts; new server action; new UI card.
+- No schema changes anticipated unless the surface persists
+  suggestions to a new jsonb column on an existing table.
+- Suite extension: probably none new — existing Suite 16+17 cover
+  the AI infrastructure surface; per-surface tests are app-layer
+  (output validation, prompt assembler unit tests).
 
-**Depends on §0.6.2 lock.** If Frame 2 with one companion: this
-slice is the second companion or an extension of slice 11c. If
-Frame 1 literal: this is the AI engine foundation regardless.
+**Walk-test scope**: real Claude summary generation on an owner-
+portal property dossier; cost tracking populated; output quality
+human-reviewed.
 
-### Suite 16-19 — RLS test suite extension (DRAFT)
+**§13.6 opportunistic candidates eligible per adjacency**: depends
+on chosen surface. If owner-portal summaries: §13.6 items 14 (AI
+summaries in owner portal) and 21 (statement caching/archive — IF
+the summary surface lives near statements). One-line justification
+required per included item per §0.5 §13.6 discipline.
 
-Per §6. Authored after the corresponding feature slice lands.
-Cumulative-floor verification (Suite 1-15 must continue passing)
-runs after each new suite lands.
+### Phase 6.3 — Third AI surface (TBD; likely Reporting insights or Vendor suggestions)
 
-### §14 sign-off (DRAFT placeholder)
+**Probable scope** (locks at slice 11c audit):
 
-**Phase 6 sign-off** lands in `SECURITY_REVIEW.md` as §14, analog
-of §11 / §12 / §13. Required §14 subsections (per Phase 5
-precedent):
+- Surface choice deferred to slice 11c audit. Leading candidates per
+  §14 lean ordering from Section 3: Reporting insights, Vendor
+  suggestions.
+- Both are internal-facing (no prompt injection surface). Both reuse
+  Phase 6.1 infrastructure.
+- Reporting insights: insight card at top of each `/reports/<name>`
+  page + owner-portal `/owner-portal/reports/<name>` page. Maps to
+  §13.6 item 15 (AI insights on reports).
+- Vendor suggestions: sidebar on `/work-orders/[id]`; ranked vendor
+  list with rationale. Uses Phase 2 vendor performance data.
 
-- §14.1 New tables / migrations inventoried verbatim
-- §14.2 New RLS policies + drop-and-recreate notes
-- §14.3 New service-role bypass paths (Automation runner; possibly
-  AI runtime) — explicit per §0.5 decision 6
-- §14.4 Audit-log vocabulary expansion
-- §14.5 **Novel-pattern reviewer-attention paragraph** — Phase 6
-  novelty surface: cron infrastructure, AI integration, is_ai_actor()
-  RESTRICTIVE policy, EXCLUDE constraint on Amenities (if shipped),
-  lease-lifecycle inspection hooks (if shipped). Mirror §13.5 shape.
-- §14.6 Known limitations / deferrals
-- §14.7 RLS test plan delta (Suite 16+)
-- §14.8 Email safety delta (Gate 3 vocabulary expansion if
-  email-emitting automations shipped)
-- §14.9 Application-layer notes (single-source-of-truth helper
-  registry)
-- §14.10 Attestation table
+**Walk-test scope and §13.6 opportunistic candidates**: per slice
+audit.
+
+### Phase 6.4+ — Remaining AI surfaces
+
+Three SPEC AI surfaces remain after slices 6.1-6.3:
+- Message drafting (tenant-facing — prompt injection discipline audit
+  required first; AI_AUTOMATION_SAFETY.md §9 lands with this slice)
+- Leasing assistant (lead profile + activity history context assembly)
+- Whichever of summaries / reporting insights / vendor suggestions is
+  not picked for 6.2/6.3
+
+Phase 6 closes when all 6 SPEC AI surfaces ship OR when partner signal
+indicates Phase 6 ship readiness. The remaining slices' ordering and
+scope lock per-slice; total slice count is 4-6 depending on bundling
+choices.
 
 ### What can run in parallel
 
-- Slices 11c (companion module) and 11d may overlap if independent
-  modules (Amenities + Inspections are independent per Section 1
-  dependency graph).
-- Suite 16-19 authoring can begin in parallel with the
-  corresponding feature slice's RLS migration once the migration
-  lands.
+- Slice 11b and 11c if their AI surfaces are independent (which
+  Summaries + Reporting insights / Vendor suggestions all are).
+- Suite 16+17 authoring in parallel with slice 11a feature work
+  once the migration shape locks.
 
 ### What must serialize
 
-- Slice 11b (email-triggered) requires 11a complete.
-- AI engine slice requires §0.6.4 (vendor) + §0.6.5 (first surface)
-  locked.
-- Any slice with cron dependency requires §0.6.3 (substrate) locked.
+- Slice 11a is the foundation; 11b/11c/11d+ depend on the LLM client
+  wrapper + cost tracking + rate limiting + RESTRICTIVE policy all
+  being in place.
+- Tenant-facing AI surface (message drafting) requires
+  AI_AUTOMATION_SAFETY.md §9 prompt-injection discipline audit before
+  slice authoring; that audit follows the same scaffold-and-lock
+  shape as PHASE_6_AUDIT_DRAFT.md but is scoped to prompt-injection
+  alone.
 
 ## 9. Deferred items inheriting from Phase 5
 
 Per SECURITY_REVIEW.md §13.6 (Phase 5 closure known limitations).
-33 items across §13.6 + §12.6 + §11.5. Mapping to Phase 6
-destinations (per PHASE_6_AUDIT_DRAFT.md Section 1):
+**Mapping revised** for the Phase 6 deviation:
 
-### Map to Phase 6 Automation slice 11a-11b
+### Map to Phase 6 AI slices
 
-6 items absorbed (per Section 1 deferral catalog):
-- Auto-charge generation via cron (§13.6 item 9) — slice 11a
-- Late fees + grace periods (§13.6 item 10) — slice 11a or 11b
-- Email receipts/statement-ready/charge-created (§13.6 item 11) —
-  slice 11b
-- Scheduled report delivery (§13.6 item 12) — slice 11b
-- Charge templates (§13.6 item 13) — slice 11a
-- Tour confirmation emails (§12.6 item 5) — slice 11b
+7 items (from PHASE_6_AUDIT_DRAFT.md Section 1 catalog):
 
-### Map to Phase 6 AI engine slice (if shipped per §0.6 lock)
+- **Maintenance triage AI (real LLM)** → Phase 6.1 ✓
+- **`is_ai_actor()` RESTRICTIVE structural enforcement (§13.9)** →
+  Phase 6.1 ✓
+- **AI summaries in owner portal (§13.6 item 14)** → Phase 6.2
+  (probable) per §8 lean
+- **AI insights on reports (§13.6 item 15)** → Phase 6.3 (probable)
+  per §8 lean
+- **Leasing assistant AI** → Phase 6.4+
+- **Message drafting AI** → Phase 6.4+ (gated on §9 prompt-injection
+  audit)
+- **Vendor suggestions AI** → Phase 6.3 (alternative) or 6.4+
 
-7 items (§13.6 item 14 + 15, §13.9 structural enforcement, 4
-SPEC-implicit AI surfaces).
+### Map to Phase 7+ (re-routed from prior Phase 6 destination)
 
-### Map to Phase 6 Inspections (if companion per §0.6.2)
+**6 items previously routed to "Phase 6 Automation engine" now stay
+deferred to Phase 7+:**
 
-0 §13.6 items (greenfield slice).
+- Auto-charge generation via cron (§13.6 item 9)
+- Late fees + grace periods (§13.6 item 10)
+- Email receipts/statement-ready/charge-created (§13.6 item 11)
+- Scheduled report delivery (§13.6 item 12)
+- Charge templates (§13.6 item 13)
+- Tour confirmation emails (§12.6 item 5)
 
-### Map to Phase 6 Amenities (if companion per §0.6.2)
+These are the original deferral routing; Phase 6's strategic
+inversion (decision 11) moves them along with the Automation engine
+itself. Phase 7+ scope must absorb them.
 
-0 §13.6 items (greenfield slice).
+### Map to Phase 7+ deferred modules (Inspections + Amenities)
 
-### Opportunistic inclusion candidates (§0.6.8 PENDING)
+0 items map here. Both are SPEC-greenfield; no §13.6 items absorb.
 
-8 design-pending / walk-test feedback items + 25 scope-bounded
-items from §13.6 / §12.6 / §11.5. Most are small. Inclusion is
-case-by-case per §0.6.8 lean ("embed when natural"). NOT
-serialized into the slice plan; floats opportunistically.
+### Map to future unnumbered phase (PAYMENTS FULL)
 
-### Items not mapped to Phase 6
+8 items per §0.5 decision 17 — same routing as the scaffold.
 
-PAYMENTS FULL items (8 from §13.6) — per §0.6.7 PENDING. Probable
-defer to unnumbered future phase.
+### Opportunistic inclusion candidates per §0.5 §13.6 discipline
 
-Other scope-bounded items (lease renewals, document uploads,
-credit checks, etc.) — better fits for later phases as their
-natural domains open.
+33 items across §13.6 / §12.6 / §11.5 design-pending + scope-bounded
+buckets. Inclusion is per-slice audit decision per the binding
+adjacency discipline:
+
+- Slice 11a (maintenance triage + foundation): probably 0 items
+  eligible — no UI surface adjacency
+- Slice 11b (summaries surface): items 14 (AI summaries OP) +
+  potentially 21 (statement caching) if adjacent
+- Slice 11c (third AI surface): per surface choice
+- Slice 11d+ (later surfaces): per surface choice
+
+Each slice audit's §13.6 inclusion list captured in slice sign-off
+documentation for §14 audit trail.
 
 ## 10. SIGN-OFF PLACEHOLDER
 
 §14 in SECURITY_REVIEW.md (future, post-Phase 6 close).
 
-**§14.5 reviewer-attention paragraph** will capture Phase 6's
-novel-pattern surface — analog of §13.5 (Phase 5 junction-mediated
-portal isolation). Expected novel patterns:
+### Phase 6 §14 anticipated subsections
 
-- Cron infrastructure introduction (new service-role bypass; runner
-  authorization model; idempotency contract)
-- Real LLM API integration (vendor SDK; API key plumbing; prompt
-  assembly; response validation; cost tracking)
-- `is_ai_actor()` RESTRICTIVE policy on financial tables
-- Lease-lifecycle inspection auto-creation hooks (if Inspections
-  shipped)
-- EXCLUDE constraint on amenity reservations (if Amenities shipped)
-- New owner-portal SECURITY DEFINER helpers for new junction-
-  mediated chains (if Inspections owner portal shipped)
+- §14.1 New tables / migrations — minimal: ai_logs column additions
+  + is_ai_actor() helper + RESTRICTIVE policies
+- §14.2 New RLS policies — RESTRICTIVE on rent_charges + payments
+- §14.3 New service-role bypass paths — likely zero new (LLM client
+  routes through existing logAiAction admin-client pattern)
+- §14.4 Audit-log vocabulary expansion — `ai_mode.changed` (mode
+  elevation); per-AI-surface audit entries follow maintenance triage
+  precedent
+- §14.5 **Novel-pattern reviewer-attention paragraph** — Phase 6
+  novelty surface (analog of §13.5):
+  - **LLM integration trust model**: structured-output validation
+    via Zod; graceful-degrade on schema mismatch; cost tracking
+    parity between ai_logs and provider billing
+  - **`is_ai_actor()` RESTRICTIVE policy**: structurally enforces SPEC
+    line 465; defense-in-depth even with passive D4 detection
+    (no current write path)
+  - **ai_logs cost-tracking trust model**: data captured from
+    provider response; should not be relied on for billing decisions
+    (use provider dashboard for billing reconciliation)
+  - **Rate-limiting effectiveness**: 10/min/org enforced via ai_logs
+    count query; race conditions possible at the boundary (11th call
+    might briefly succeed if two arrive within ms); accepted as
+    "best-effort rate limit" rather than hard cap
+  - **Prompt injection protection** (when tenant-facing AI ships):
+    explicit data-delimiter discipline; system instruction explicitly
+    treats tenant fields as data; documented in
+    AI_AUTOMATION_SAFETY.md §9
+  - **Multi-tenancy isolation in prompt construction**: per-prompt-
+    assembler one-org assertion; orgId always first required parameter
+- §14.6 Known limitations / deferrals — Automation engine, Inspections,
+  Amenities all deferred to Phase 7+; PAYMENTS FULL deferred to future
+  unnumbered phase; Phase 7 scope itself PENDING per §0.6
+- §14.7 RLS test plan delta — Suite 16+17 (~18-27 assertions)
+- §14.8 Email safety delta — none; Gate 3 surface unchanged
+- §14.9 Application-layer notes — LLM client wrapper as single-source-
+  of-truth helper; prompt assembler one-org assertion as binding
+  convention; structured output validation discipline
+- §14.10 Attestation — signed by Kris Kelley after walk-test +
+  cumulative RLS regression run completes
 
 **Discipline from §13.5 is binding on Phase 6 work** per §0.5
-decision 2. Inline EXISTS subqueries on RLS-protected junction
-walks remain disallowed.
-
-**§14.10 attestation** mirrors §13.10 / §12.10 / §11.10. Signed
-by Kris Kelley after walk-test + RLS regression run completes.
+decision 2. The discipline has nothing to enforce against in Phase 6
+(no new junction-mediated chains) but stays the institutional default
+for any future re-emergence.
 
 ---
 
 ## Footnotes — what this plan deliberately does NOT do
 
-- **Lock the eight PENDING decisions in §0.6.** Those depend on
-  partner feedback signal that isn't available tonight. Locking
-  them now would be premature; the discipline that closed Phase 5
-  cleanly was Step 0 lock-in BEFORE slice authoring, not Step 0
-  lock-in BEFORE partner alignment.
-- **Author per-slice migration shapes / RLS policies / file
-  inventories at PHASE_5_PLAN.md depth.** Per-slice detail locks
-  at per-slice audit time. The sketches in §8 are 5-15 lines each
-  deliberately.
-- **Decide between Frame 1 / 2 / 3.** That's §0.6.1.
-- **Choose AI vendor / cron substrate / first AI surface.** §0.6.3-5.
-- **Estimate timelines.** Phase 5 took ~3 days end-to-end; Phase 6
-  scope (under Frame 2 with Automation + one companion) is roughly
-  comparable. Under Frame 1 (all four modules), substantially
-  larger. Final estimate depends on §0.6 lock.
+- **Lock the 6 AI surface ordering beyond 6.1**. Phase 6.2 leans
+  Summaries, Phase 6.3 leans Reporting insights or Vendor suggestions,
+  Phase 6.4+ holds the remaining 3. Final order locks at per-slice
+  audit time as the audit-first discipline (§0.5 decision 4) requires.
+
+- **Author per-slice migration SQL / RLS policies / file inventories
+  at PHASE_5_PLAN.md depth.** The §8 sketches are ~30-60 lines each
+  by design — detail locks at per-slice audit.
+
+- **Decide Phase 7 scope.** That is the single open §0.6 question.
+  Phase 7 audit-and-decide session happens after Phase 6 ships.
+
+- **Pick the model version pin** (Claude Sonnet "current" vs. specific
+  version like `claude-sonnet-4-5-20251001`). Surface for slice 11a
+  audit: version-pinning vs. tracking the latest stable.
+
+- **Author cost-monitoring UI**. Cost columns ship in 11a; user-facing
+  cost dashboard surface is a 6.2+ candidate per partner conversation.
 
 The discipline that closed Phase 5 cleanly — Step 0 lock-in before
 slice authoring; SECURITY DEFINER helpers for junction-mediated
 chains; single-source-of-truth helpers; walk-before-push; cumulative
 RLS regression; §13.5 reviewer-attention paragraph capturing novel
-patterns — is registered as binding on Phase 6 in §0.5. Partner
-signal closes §0.6; slice authoring proceeds from there.
+patterns — is registered as binding on Phase 6 in §0.5 decisions 2-10.
+All seven previously-active §0.6 decisions are now locked in §0.5
+decisions 11-17. Slice 11a authoring proceeds when ready.
 
 ---
 
-**SKETCH STATUS**: §0.5 closed (10 decisions). §0.6 OPEN (8
-decisions awaiting partner signal). §1-§10 DRAFT pending §0.6
-lock-in. Re-author this document after partner alignment to convert
-DRAFT sections to locked specifications.
+**PLAN STATUS**: LOCKED. §0.5 closed (18 entries). §0.6 reduced to
+one Phase-7-scope question explicitly held open until Phase 6 ships.
+§1-§10 substantive. Slice 11a may begin authoring.
