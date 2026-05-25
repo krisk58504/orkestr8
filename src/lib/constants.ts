@@ -453,7 +453,7 @@ export const VENDOR_INVOICE_STATUS_META: Record<
   paid: { label: "Paid", tone: "success" },
 };
 
-export const APP_NAME = "PMS-Build";
+export const APP_NAME = "Orkestr8";
 export const APP_TAGLINE = "The AI Operating System for Multifamily Property Management";
 
 /** Supabase Storage bucket for work-order photos (private, server-mediated). */

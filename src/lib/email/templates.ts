@@ -20,7 +20,7 @@ export const EMAIL_TEMPLATE = {
 export type EmailTemplateId =
   (typeof EMAIL_TEMPLATE)[keyof typeof EMAIL_TEMPLATE];
 
-const BRAND = "PMS-Build";
+const BRAND = "Orkestr8";
 
 /** Wrap body content in a minimal, inline-styled HTML shell. */
 function layout(heading: string, bodyHtml: string): string {

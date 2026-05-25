@@ -71,5 +71,5 @@ export function isRecipientAllowed(address: string): boolean {
  * verified domain — appropriate for test mode.
  */
 export function getFromAddress(): string {
-  return process.env.EMAIL_FROM?.trim() || "PMS-Build <onboarding@resend.dev>";
+  return process.env.EMAIL_FROM?.trim() || "Orkestr8 <onboarding@resend.dev>";
 }
