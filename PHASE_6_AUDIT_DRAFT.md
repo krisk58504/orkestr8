@@ -1,6 +1,14 @@
 # PHASE_6_AUDIT_DRAFT.md
 
-> **Phase 6 first-draft problem space — captured 2026-05-24, end of Phase 5 close session. Scratch work, NOT a locked plan. Inputs for a future PHASE_6_PLAN.md authoring session.**
+> **Phase 6 first-draft problem space — captured 2026-05-24, end of Phase 5 close session. Scratch work, NOT a locked plan. Inputs for a future PHASE_6_PLAN.md authoring session with partner feedback signal in hand.**
+>
+> **Sections**:
+> - **Section 1** — Phase 6 problem space (deferral catalog, candidate framings A–F, dependency graph, sequencing questions, three honest frames)
+> - **Section 2** — Automation Engine design space (added 2026-05-24)
+
+---
+
+# Section 1 — Phase 6 problem space
 
 ---
 
@@ -402,3 +410,374 @@ That work happens in a future session with this catalog as the input + your stra
 ---
 
 **Stopping here.** Catalog is captured; dependency graph is sketched; sequencing questions are surfaced. Ready for the strategic conversation when you are.
+
+---
+
+# Section 2 — Automation Engine design space catalog
+
+> **Added 2026-05-24. Scratch work, NOT a locked plan. Input for a future PHASE_6_PLAN.md authoring session with partner feedback signal in hand.**
+>
+> Scope: this section dives into **just** the Automation engine candidate (Candidate A from Section 1). It does NOT decide whether Automation is the right Phase 6 first move — that's still a Section 1 strategic question. It catalogs the design space so that **if** Automation is picked, the lock-in conversation has the options in front of it.
+
+## Key read-first finding (changes the scope question)
+
+**`automation_logs` and `ai_logs` tables ALREADY EXIST** from Phase 1 (migration `20260518000500_infrastructure.sql`). The log sinks were deliberately staged in Phase 1 so every later AI/automation action has a destination per SPEC Gate 2 "log everything." Schemas:
+
+```sql
+public.automation_logs (
+  id, organization_id, automation_id uuid /* nullable — no FK target yet */,
+  module text, action_type text,
+  status text default 'logged' /* logged|blocked|executed|skipped */,
+  result jsonb, created_at timestamptz
+)
+
+public.ai_logs (
+  id, organization_id, actor_id uuid,
+  module text, action_type text, ai_mode public.ai_mode,
+  status text default 'logged' /* logged|drafted|suggested|executed|blocked */,
+  prompt jsonb, response jsonb, metadata jsonb, created_at
+)
+```
+
+**`organizations.ai_mode` column already exists** with default `'disabled'` (Phase 1 enum + column). The `ai_mode` enum has the 5 SPEC-required values: `disabled / draft_only / suggest_only / auto_with_approval / fully_automated`. **No runtime currently reads or enforces it.**
+
+**No cron infrastructure** exists. `vercel.json` is absent. `next.config.ts` carries no scheduling config. `package.json` has no inngest / trigger.dev / node-cron / @vercel/cron / pg_cron client. Genuinely clean slate.
+
+**No `automations` parent table** exists. The Phase 1 staging deliberately omitted it — `automation_logs.automation_id` is nullable specifically because no parent table existed to FK-reference yet. Phase 6 Automation must create it.
+
+**Scope reframing**: this isn't "build automation infrastructure from scratch." It's:
+1. Create the `automations` parent table (and probably `automation_runs` for per-execution rows)
+2. Pick a cron substrate
+3. Build the runner that reads automation rows + writes to the existing `automation_logs` sink
+4. Wire `canRunAutomationAction()` permission gate (per SPEC Gate 2)
+5. Ship the first consumer
+
+The log sinks + AI mode column + the audit log helper pattern (`logAudit()` from §11.3 / §12.4 / §13.4 Part C) are all pre-existing. The runner pattern can borrow heavily from slice 10a's `generateChargesForProperty` for the bulk-write shape — currently button-triggered, will become cron-triggered.
+
+---
+
+## SPEC verbatim grounding
+
+**Phase 6 line (line 564)**:
+```
+Phase 6:
+Automations + AI + inspections + amenities
+```
+
+**SPEC §"AUTOMATION ENGINE" (line 390-391)**:
+```
+- Trigger → Condition → Action system
+```
+
+That's the entire SPEC-named automation surface. Three words.
+
+**SPEC Gate 2 — AI/Automation Control Gate (line 35-68; load-bearing)**:
+```
+AI and automations must default to safe mode.
+Default AI mode: disabled or draft-only.
+
+Do not allow AI to:
+- auto-send messages
+- auto-dispatch vendors
+- approve invoices
+- modify lease/payment records
+- escalate real tenant issues
+- trigger external notifications
+
+unless the organization has explicitly enabled that module and action level.
+
+Required AI modes:
+- disabled
+- draft_only
+- suggest_only
+- auto_with_approval
+- fully_automated
+
+Every AI or automation action must check the organization/module setting before
+running. Create a centralized permission function such as:
+
+  canRunAutomationAction(orgId, module, actionType)
+
+All AI actions must be logged in `ai_logs`.
+All automation actions must be logged in `automation_logs`.
+```
+
+**Gate 3 anti-loop constraint (line 82)**:
+```
+- Prevent automation loops from sending repeated emails.
+```
+
+**SPEC §"AI / Automation Control Gate" duplicate (line 462-477)** — the same constraints restated:
+```
+RULES:
+- AI cannot send messages by default
+- AI cannot dispatch vendors
+- AI cannot modify financial data
+- AI cannot escalate issues automatically
+
+REQUIRE:
+Central control function:
+canRunAutomationAction(orgId, module, actionType)
+ALL AI + automations must pass through this check.
+
+LOG EVERYTHING:
+- ai_logs
+- automation_logs
+
+CREATE:
+- AI_AUTOMATION_SAFETY.md
+```
+
+**SPEC line 121** notes `automation builder UI` as a development-freedom item.
+
+**Note**: SPEC distinguishes AI mode from automation mode at the org level conceptually but the implemented `ai_mode` enum on `organizations` is used for both. Whether automations get their own mode column or share the AI mode is a design question (surfaced in §B below).
+
+## Accumulated deferrals routed here
+
+From SECURITY_REVIEW.md §13.6 + §12.6, the items the running audit promised would land in "Phase 6 Automation engine":
+
+| # | Item | Source | Notes |
+|---|---|---|---|
+| 1 | Auto-charge generation via cron | §13.6 item 9 | Slice 10a's `generateChargesForProperty` is button-triggered; this converts it to scheduled |
+| 2 | Late fees + grace periods | §13.6 item 10 | New action type (insert charge_type='fee' when overdue) |
+| 3 | Email receipts (`payment.received`, `statement.ready`, `charge.created`) | §13.6 item 11 | Three event-triggered automations |
+| 4 | Scheduled report delivery | §13.6 item 12 | Cron-triggered with email send |
+| 5 | Charge templates (per-lease recurring rules) | §13.6 item 13 | Couples to auto-charge generation |
+| 6 | Tour confirmation / reminder emails to prospect | §12.6 item 5 | Phase 4 deferral; event-triggered on tour scheduling |
+
+**6 accumulated items** waiting for this engine. Two trigger shapes are represented: **cron-triggered** (auto-charge, scheduled reports) and **event-triggered** (receipts, charge.created notifications, tour confirmations). The first slice's design has to decide which shape ships first (§F below).
+
+## Design-space catalog
+
+### A. Cron substrate
+
+| Option | Pros | Cons | Notes |
+|---|---|---|---|
+| **Vercel Cron Jobs** | Zero new infra; configured in `vercel.json`; runs Next.js route handler on schedule; observability via Vercel logs; same runtime as the app. | Vercel lock-in; max once-per-minute; serverless time limits (60s hobby / 5min pro); no native idempotency; rate-limited cron count on lower plans. | Cleanest fit for the current stack. Reuse existing route handlers as cron endpoints. |
+| **Supabase Edge Functions + pg_cron** | DB-native; transactional with table state; pg_cron schedules SQL/functions directly inside Postgres; logs live in pg_cron tables. | pg_cron extension must be enabled (Supabase admin action); debugging harder; less observable than Vercel logs; ties scheduling to Postgres uptime. | The most Supabase-native option. Whether pg_cron is available on the current Supabase project plan needs verification. |
+| **Inngest** (third-party) | Production-grade; durable execution; built-in retries + idempotency + fan-out + step functions; great DX; great observability; designed exactly for this. | New vendor dependency + cost; new SDK to learn; webhook-based (calls back into the app); free tier may be sufficient for early scale. | Significant feature lift but real vendor commitment. |
+| **Trigger.dev** | Similar to Inngest; OSS-friendly; can self-host. | Less mature than Inngest; similar tradeoffs. | |
+| **GitHub Actions cron** | Free; runs on GitHub infra. | Not designed for app-level scheduling; webhook latency; rate-limited; observability via GitHub Actions logs (not great for ops). | Defensible only as a last resort. |
+| **node-cron in a long-running Node process** | Simple. | Vercel serverless doesn't keep processes alive — incompatible with current deployment. Would need a separate worker process / Railway / Fly / etc. | Probably disqualified by current deployment model. |
+
+**Honest assessment**: the choice is mostly between **Vercel Cron** (simplest, default-able), **pg_cron** (most Supabase-native), and **Inngest** (best DX + production-grade). The last is real money + vendor dependency; the first two are free + already-paid-for.
+
+### B. Trigger / Condition / Action data model
+
+SPEC says "Trigger → Condition → Action system" but doesn't specify schema. Real options:
+
+#### Option B1 — single `automations` table (denormalized)
+```sql
+public.automations (
+  id, organization_id, name, description,
+  trigger_type text, trigger_config jsonb,
+  condition_expr text /* or jsonb */,
+  action_type text, action_config jsonb,
+  enabled boolean, last_run_at timestamptz, last_result text,
+  created_at, updated_at
+)
+```
+Pros: single table; easy CRUD; query-friendly. Cons: rigid (one trigger / one condition / one action per row); JSON config is opaque to RLS.
+
+#### Option B2 — normalized parent + child tables
+```sql
+public.automations (id, organization_id, name, enabled, created_at, ...)
+public.automation_triggers (automation_id, type, config jsonb)
+public.automation_conditions (automation_id, expr)
+public.automation_actions (automation_id, type, config jsonb, sequence_order)
+```
+Pros: multi-action support; multi-condition support; more flexible. Cons: more tables; harder UI; more RLS surface; arguably over-engineered for first slice.
+
+#### Option B3 — hybrid: single `automations` row, JSON columns for trigger/condition/action with versioned shapes
+Pros: schema-light; ships fast. Cons: JSON schemas drift over time; type-safety lost; condition language has to live somewhere (DSL? SQL? JS function?).
+
+**Honest assessment**: B1 (single table) is the natural first slice — matches the existing single-table patterns elsewhere in the codebase. B2 normalization is a real future need but premature for the first slice. B3 is what would happen if you don't decide.
+
+### C. First-slice scope (the cardinal question)
+
+| Option | Description | Trade-off |
+|---|---|---|
+| **C1** Infra-only ("hello world") | Cron substrate + `automations` table + runner + `canRunAutomationAction()` + one no-op test automation that just writes to `automation_logs`. No real consumer. | Cleanest foundation; smallest scope; no user-visible value; risks "shipped but nothing happens" |
+| **C2** Infra + auto-charge generation | All of C1 + convert slice 10a's button-triggered `generateChargesForProperty` to scheduled-monthly automation | Vertical slice that ships real value; uses an existing consumer (proven UI already) |
+| **C3** Infra + multiple consumers | All of C1 + auto-charge + receipts + tour confirmations | Larger; demoable; risks scope creep |
+| **C4** Infra + event triggers + payment.received receipt | All of C1 + the event-trigger seam (subscribe to `payment.recorded` audit entries) + one email automation | Establishes the event-trigger pattern; shows the "every payment fires a receipt" flow that the rest of Phase 4/5 deferred |
+
+Lean from precedent (Phase 5 slice 10a / 9a / 9c): **C2** matches the established phase-opener shape — infrastructure + one real consumer that proves the pattern. C3 risks the same multi-consumer scope drift Phase 4 / Phase 5 avoided. C4 is interesting but introduces event triggers which is a heavier architectural commitment (§F).
+
+### D. Loop prevention (SPEC line 82 + 462)
+
+SPEC explicitly: "Prevent automation loops from sending repeated emails." Options:
+
+| Mitigation | Description | Cost |
+|---|---|---|
+| **D1** Idempotency key per (automation, target_entity, period) | An automation row + a target (e.g. lease_id) + a period (e.g. 2026-04) computes a unique key; runner refuses to insert duplicate `automation_logs` for the same key | Medium — needs a UNIQUE constraint or app-layer existence check |
+| **D2** Per-recipient email rate limit | Reuse Phase 3's `checkRecentDuplicate()` helper from `src/lib/email/log.ts` (already exists, fails-closed) | Cheap — infrastructure already shipped |
+| **D3** Automation depth tracker | Track "automation A triggered automation B" call depth; cap at N | Heavy — needs a tracing layer |
+| **D4** Hard runtime cap per automation run | Each automation run gets max X seconds; runaway loops die naturally | Easy — wraps the runner |
+| **D5** Per-org rate limit across all automations | "Org X can't run more than Y automations per minute" | Medium |
+
+Defense-in-depth lean: ship **D1 + D2** in the first slice (idempotency at the data layer + reuse the email duplicate check for the email cases). D3/D4/D5 are future-slice work.
+
+### E. AI integration seam — `canRunAutomationAction()`
+
+SPEC requires every AI/automation action to call this. Phase 6 AI engine will need it. Phase 6 Automation engine should establish it.
+
+**Lean (per the prompt)**: include `canRunAutomationAction(orgId, module, actionType)` as a real helper from slice 1. For automation-only calls (no AI), it checks the org's automation enablement settings. When AI engine ships later, it adds the ai_mode dimension to the same helper. The seam exists from day one.
+
+Where it lives: `src/lib/auth/automation-permissions.ts` (new) or extends `src/lib/auth/roles.ts`. Honest open question: does Phase 6 Automation introduce a separate `automation_mode` column on `organizations` (mirroring `ai_mode`), or does it share `ai_mode`? SPEC treats them as one gate ("AI/automation control gate") but the modes are conceptually different (automation can be "scheduled active" while AI is "disabled"). **Surface for Step 0 decision.**
+
+### F. Trigger types in slice 1
+
+Three trigger shapes:
+- **Cron-triggered** — runs on schedule (e.g., monthly auto-charge generation). Pure cron substrate consumer.
+- **Manual-triggered** — staff clicks a button in the UI. **Slice 10a's `generateChargesForProperty` already works this way** — converting it to be invokable AS AN AUTOMATION (registered, logged, RLS-aware) is the natural migration.
+- **Event-triggered** — fires when something happens (e.g., `payment.recorded` audit entry → send receipt). Needs a hook in every relevant server action OR a Postgres trigger on `audit_logs` that fans out to a queue.
+
+**Lean** (per the prompt): **cron + manual in slice 1; event-triggered deferred to slice 2.** Reasons:
+- Cron-only is the minimum testable cron substrate validation
+- Manual triggers already exist conceptually (the existing buttons); just need to be registered as automations for log consistency
+- Event triggers require an architectural commitment (audit-log Postgres trigger? webhook? queue?) that deserves its own audit
+
+### G. Per-org configurability — system vs. custom
+
+| Option | Description | Trade-off |
+|---|---|---|
+| **G1** System automations only | Defined in code; orgs get on/off toggle | Smallest scope; matches §0.5-decision-style locks; no UI complexity |
+| **G2** Custom authoring UI | Orgs create their own | Real product feature; significant scope; needs a condition language / DSL |
+| **G3** Both | System defaults + custom on top | Best long-term; deferrable to later slice |
+
+**Lean** (per the prompt): **G1 (system-only) in slice 1.** A custom-authoring UI is a serious feature in its own right — DSL design, validation, sandboxing of condition expressions, all real work. Defer.
+
+### H. Authorization for automation management
+
+Who can enable/disable/configure system automations per-org?
+
+Lean: **`is_org_manager`** (same gate as property_owners writes per §13.1.3 — financial-data implications via auto-charge generation). LEASING_AGENT excluded for the same reason.
+
+Question to surface: should enabling an automation that triggers email sends require a tighter gate (e.g., `is_owner` only)? Email-loop blast radius is bigger than a normal write. **Surface for Step 0 decision.**
+
+### I. Automation_runs vs. automation_logs
+
+The existing `automation_logs` table has rows per "logged event." But the runner needs to track "this automation last ran at X, with result Y, took Z duration, retried N times." That's runs-level data.
+
+Two options:
+- **I1** Reuse `automation_logs` for both event records and run records (status field differentiates)
+- **I2** Add a separate `automation_runs (automation_id, started_at, ended_at, status, result, retry_count)` table; `automation_logs` continues to log per-action events
+
+**Lean**: I2. The two have different lifecycles (a single run might emit multiple log entries — "started", "filtered out 3 leases", "created 17 charges", "completed"). Separation of concerns. The `automation_logs.automation_id` FK can finally non-null once `automations` exists.
+
+### J. Idempotency contract
+
+Per cron-substrate option B (and the loop-prevention §D1), the runner needs an idempotency key shape. Options:
+
+- **K1** `(automation_id, period_year, period_month)` for monthly automations
+- **K2** `(automation_id, target_entity_type, target_entity_id, period)` for per-entity-per-period
+- **K3** Free-form `idempotency_key text` column on `automation_runs` that each automation defines per-type
+
+Lean: **K3** — most flexible; the runner computes the key per-automation-type (a monthly auto-charge for lease X for 2026-04 has key `auto-charge:lease:X:202604`). UNIQUE constraint on (automation_id, idempotency_key) blocks duplicates.
+
+### K. Email vocabulary expansion
+
+Phase 5 §0.5 decision 9 deferred ALL Phase 5 email templates to the Phase 6 Automation engine. The receipts / statement-ready / charge-created templates haven't been written. Phase 6 Automation engine slice 1 has to decide which (if any) templates ship in slice 1.
+
+Lean: **zero email templates in slice 1.** Slice 1 ships the runner + auto-charge generation (no email side effect). Email-driven automations (receipts, statement-ready, tour confirmations) come in slice 2 or 3 once the runner is proven. Reasons:
+- Gate 3 surface expansion deserves its own slice with explicit walk-test of every new template through the test-mode allowlist
+- Auto-charge generation has no email side effect (it just creates rent_charges)
+- Defers the loop-prevention discipline (§D) testing to the slice that actually triggers email
+
+## Mid-flight decisions to lock at PHASE_6_PLAN.md authoring time
+
+Enumerated for the future planning session. **NOT picked tonight.**
+
+1. **Cron substrate choice** — Vercel Cron / pg_cron / Inngest / Trigger.dev / other. Probable lean: Vercel Cron for simplicity unless partner feedback indicates production-scale ops requirements that push toward Inngest.
+
+2. **Data model shape** — single `automations` table (B1) / normalized (B2) / hybrid JSON (B3). Probable lean: B1 single table with JSON config columns.
+
+3. **First slice scope** — C1 / C2 / C3 / C4. Probable lean: C2 (infra + auto-charge generation as first consumer).
+
+4. **`automations` parent table column shape** — what fields, what indexes, what RLS posture. Detail-level; locks at slice authoring.
+
+5. **`automation_runs` separate from `automation_logs`** (I1 vs I2). Probable lean: I2 (separate runs table).
+
+6. **Loop prevention mitigations in slice 1** — D1+D2 baseline / which others. Probable lean: D1 (idempotency key) + D2 (existing email duplicate check) + D4 (hard runtime cap).
+
+7. **`canRunAutomationAction()` shape in slice 1** — full helper / stub. Probable lean: real helper with the AI-mode dimension stubbed to return true for automation-only calls.
+
+8. **Separate `automation_mode` column on `organizations`** vs share `ai_mode`. Probable lean: separate column (different conceptual surface, even if SPEC groups them as one gate).
+
+9. **Trigger types in slice 1** — cron / cron+manual / cron+manual+event. Probable lean: cron-only with manual as slice 2 enhancement (the existing `generateChargesForProperty` button stays as-is; the new automation is the cron-driven version).
+
+10. **System-only vs. custom-authoring** — G1 / G3 phased. Probable lean: G1 (system-only) in slice 1; G3 (custom on top) potentially in slice 2+.
+
+11. **Authorization gate** — `is_org_manager` / tighter for email-emitting automations. Probable lean: `is_org_manager` baseline; revisit if email-emitting automations need a tighter gate.
+
+12. **Idempotency key shape** — K1 / K2 / K3. Probable lean: K3 (free-form per-automation key with UNIQUE constraint).
+
+13. **Email templates in slice 1** — zero / receipts / receipts+statement-ready. Probable lean: zero (Gate 3 expansion deferred to slice 2+).
+
+14. **automation_logs retention policy** — never delete / time-based pruning. Probable lean: never delete (treat as audit-log peers); revisit if storage becomes an issue.
+
+15. **Cron entrypoint security** — how does the cron substrate prove it's authorized to invoke the runner? (Vercel: cron secret in request header. pg_cron: runs as table owner — privileged.) Probable lean: Vercel cron with `CRON_SECRET` env var verified at the runner endpoint.
+
+## File inventory sketch — slice 1 (infra + auto-charge as first consumer)
+
+Rough estimate, for future PHASE_6_PLAN.md sizing.
+
+| # | Path | Op | Why |
+|---|---|---|---|
+| 1 | `supabase/migrations/<date>_phase6_automations.sql` | new | `automations` table + `automation_runs` table + RLS + FK from `automation_logs.automation_id` (existing column, currently nullable) → `automations.id` |
+| 2 | `src/lib/types/database.ts` | edit | add `automations` + `automation_runs` table blocks; possibly new `automation_status` enum |
+| 3 | `src/lib/types/app.ts` | edit | type aliases |
+| 4 | `src/lib/constants.ts` | edit | AUTOMATION_TRIGGER_TYPE_META + AUTOMATION_STATUS_META if applicable |
+| 5 | `src/lib/validations/automation.ts` | new | input schemas |
+| 6 | `src/lib/auth/automation-permissions.ts` | new | `canRunAutomationAction(orgId, module, actionType)` helper |
+| 7 | `src/lib/data/automations.ts` | new | listAutomations / getAutomation / listAutomationRuns |
+| 8 | `src/lib/automation/runner.ts` | new | the execution loop: read pending automations, evaluate conditions, dispatch actions, write to automation_logs + automation_runs |
+| 9 | `src/lib/automation/handlers/auto-charge.ts` | new | the first concrete handler — reuses slice 10a's `generateChargesForProperty` logic but cron-driven |
+| 10 | `src/lib/automation/handlers/index.ts` | new | handler registry |
+| 11 | `src/app/api/cron/automations/route.ts` | new | the Vercel-cron-invoked endpoint that triggers the runner (gated by `CRON_SECRET` env) |
+| 12 | `vercel.json` | new | cron schedule config (e.g., `{ "crons": [{ "path": "/api/cron/automations", "schedule": "*/15 * * * *" }] }`) |
+| 13 | `src/app/(app)/automations/page.tsx` | new | list page (admin view) |
+| 14 | `src/app/(app)/automations/actions.ts` | new | enable / disable / manual-trigger server actions |
+| 15 | `src/components/automations/automations-view.tsx` | new | DataTable |
+| 16 | `src/components/automations/automation-runs-section.tsx` | new | run history per automation |
+| 17 | `src/components/layout/nav.ts` | edit | flip Automations from disabled to enabled |
+| 18 | `.env.example` | edit | add `CRON_SECRET` |
+| 19 | `EMAIL_SAFETY.md` | maybe edit | document the cron-context relationship to Gate 3 loop prevention (even though slice 1 ships no templates) |
+| 20 | `AI_AUTOMATION_SAFETY.md` | maybe new | SPEC line 100 requires this file. Hasn't been authored yet. Phase 6 Automation may be the natural moment to write the initial version even if AI doesn't ship until Phase 6 AI slice. |
+
+**Estimate: 17-20 files** for slice 1. Comparable to Phase 5 slice 10e (19 files) or slice 10f (23 files).
+
+**`AI_AUTOMATION_SAFETY.md` is a SPEC-required file** (line 100) that doesn't exist yet. Phase 6 Automation engine is the natural moment to author it. May warrant its own audit/draft pass before slice 1 — surface for the future planning session.
+
+## RLS posture surfaced for future planning
+
+The runner needs to insert `automation_logs` + `automation_runs` + execute domain actions (insert `rent_charges` for auto-charge). The actions cross multiple tables — same shape as `convertApplicationToLease` in Phase 4 slice 9d.
+
+Options:
+- Cron endpoint runs as service-role / admin client (bypasses RLS entirely). Simple but powerful — needs careful audit.
+- Cron endpoint runs as a system user with appropriate roles per org. More complex but RLS-respecting.
+
+Lean: **service-role admin client**, modeled on existing service-role bypass paths (B.6 audit-log writes already work this way). Cron is privileged by nature.
+
+Per the §13.5 SECURITY DEFINER discipline: if the runner reads RLS-protected tables to evaluate conditions, those reads should go through SECURITY DEFINER helpers — OR the runner just uses the admin client throughout (which is the same effect, simpler).
+
+Probable approach: **admin client throughout the runner, with explicit audit-trail noting "automation_id X ran as system actor"**. The `automation_logs` table has `automation_id` but no actor_id (deliberate — system runs don't have a user actor).
+
+Cross-reference §13.3 of the just-authored §13: that section asserted "Phase 5 added zero new service-role bypass paths." Phase 6 Automation will add new bypass paths — specifically the cron endpoint + the runner module. These need to be inventoried in §14.3 (Phase 6 audit packet acceptance) at sign-off time.
+
+## What Section 2 does NOT do (deliberately)
+
+- Lock the cron substrate choice
+- Lock the data model
+- Lock first slice scope
+- Lock the automation_mode column question (separate vs. shared with ai_mode)
+- Author PHASE_6_PLAN.md
+- Decide whether Frame 1 / Frame 2 / Frame 3 from Section 1 is correct
+- Pick which other Phase 6 modules (AI / Inspections / Amenities) ship alongside
+
+That work happens in a future session with **this catalog + Section 1's frames + partner feedback signal in hand**, against the same Step 0 lock-in discipline that's gotten Phase 3 / 4 / 5 to where they are.
+
+---
+
+**Stopping here.** Section 2 cataloged. Design space captured for the Automation engine candidate. Future sections (Phase 6 AI engine design space, Inspections, Amenities) can be added to this file as their own §3 / §4 / §5 when the conversation moves to them.
