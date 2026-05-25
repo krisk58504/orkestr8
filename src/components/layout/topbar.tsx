@@ -7,7 +7,13 @@ import type { SessionContext } from "@/lib/types/app";
 import { MobileNav } from "./mobile-nav";
 import { UserMenu } from "./user-menu";
 
-export function Topbar({ context }: { context: SessionContext }) {
+export function Topbar({
+  context,
+  showOwnerPortalLink,
+}: {
+  context: SessionContext;
+  showOwnerPortalLink: boolean;
+}) {
   const name = context.profile.full_name?.trim() || context.email;
   const primaryRole = context.roles[0];
 
@@ -35,6 +41,7 @@ export function Topbar({ context }: { context: SessionContext }) {
           email={context.email}
           orgName={context.organization.name}
           roleLabel={primaryRole ? ROLE_LABELS[primaryRole] : "Member"}
+          showOwnerPortalLink={showOwnerPortalLink}
         />
       </div>
     </header>

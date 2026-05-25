@@ -2,10 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Building, DoorOpen } from "lucide-react";
+import { PropertyOwnersSection } from "@/components/properties/property-owners-section";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
+import { isManager } from "@/lib/auth/roles";
+import {
+  listEligibleOwnerCandidates,
+  listPropertyOwners,
+} from "@/lib/data/property-owners";
 import {
   Card,
   CardContent,
@@ -45,21 +51,30 @@ export default async function PropertyDetailPage({
   const property = await getProperty(context.organization.id, id);
   if (!property) notFound();
 
+  const canManage = isManager(context.roles);
+
   const supabase = await createClient();
-  const [buildingsResult, unitsResult] = await Promise.all([
-    supabase
-      .from("buildings")
-      .select("*")
-      .eq("organization_id", context.organization.id)
-      .eq("property_id", id)
-      .order("name"),
-    supabase
-      .from("units")
-      .select("*")
-      .eq("organization_id", context.organization.id)
-      .eq("property_id", id)
-      .order("unit_number"),
-  ]);
+  const [buildingsResult, unitsResult, owners, eligibleCandidates] =
+    await Promise.all([
+      supabase
+        .from("buildings")
+        .select("*")
+        .eq("organization_id", context.organization.id)
+        .eq("property_id", id)
+        .order("name"),
+      supabase
+        .from("units")
+        .select("*")
+        .eq("organization_id", context.organization.id)
+        .eq("property_id", id)
+        .order("unit_number"),
+      listPropertyOwners(context.organization.id, id),
+      canManage
+        ? listEligibleOwnerCandidates(context.organization.id)
+        : Promise.resolve(
+            [] as { id: string; full_name: string | null; email: string }[],
+          ),
+    ]);
   const buildings = buildingsResult.data ?? [];
   const units = unitsResult.data ?? [];
   const occupied = units.filter((u) =>
@@ -139,6 +154,14 @@ export default async function PropertyDetailPage({
           ) : null}
         </CardContent>
       </Card>
+
+      <PropertyOwnersSection
+        propertyId={id}
+        propertyName={property.name}
+        owners={owners}
+        eligibleCandidates={eligibleCandidates}
+        canManage={canManage}
+      />
 
       <Card>
         <CardHeader>

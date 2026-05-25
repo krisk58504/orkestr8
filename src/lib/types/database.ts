@@ -964,6 +964,26 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["payments"]["Insert"]>;
         Relationships: [];
       };
+      property_owners: {
+        Row: {
+          id: string;
+          organization_id: string;
+          user_id: string;
+          property_id: string;
+          created_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          user_id: string;
+          property_id: string;
+          created_at?: string;
+          created_by?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["property_owners"]["Insert"]>;
+        Relationships: [];
+      };
       messages: {
         Row: {
           id: string;

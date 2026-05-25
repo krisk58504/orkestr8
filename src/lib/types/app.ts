@@ -42,6 +42,7 @@ export type Tour = Tables<"tours">;
 export type Application = Tables<"applications">;
 export type RentCharge = Tables<"rent_charges">;
 export type Payment = Tables<"payments">;
+export type PropertyOwner = Tables<"property_owners">;
 
 export type UserRole = Enums<"user_role">;
 export type AiMode = Enums<"ai_mode">;

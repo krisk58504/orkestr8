@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeftRight, ChevronsUpDown, LogOut, Settings } from "lucide-react";
+import { ArrowLeftRight, LogOut } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -21,18 +21,21 @@ function initialsOf(name: string): string {
   return letters.join("") || "U";
 }
 
-export function UserMenu({
+/**
+ * Owner portal user menu. Mirrors VendorUserMenu but adds the dual-mode
+ * "Switch to staff app" affordance for users holding both an owner-side
+ * identity (INVESTOR or property_owners row) AND a staff role.
+ */
+export function OwnerUserMenu({
   name,
   email,
-  orgName,
-  roleLabel,
-  showOwnerPortalLink,
+  contextLabel,
+  showStaffAppLink,
 }: {
   name: string;
   email: string;
-  orgName: string;
-  roleLabel: string;
-  showOwnerPortalLink: boolean;
+  contextLabel: string;
+  showStaffAppLink: boolean;
 }) {
   return (
     <DropdownMenu>
@@ -47,7 +50,6 @@ export function UserMenu({
         <span className="hidden max-w-[10rem] truncate text-sm font-medium sm:inline">
           {name}
         </span>
-        <ChevronsUpDown className="size-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuGroup>
@@ -58,22 +60,20 @@ export function UserMenu({
                 {email}
               </span>
               <span className="mt-1 truncate text-xs font-normal text-muted-foreground">
-                {orgName} · {roleLabel}
+                {contextLabel}
               </span>
             </div>
           </DropdownMenuLabel>
         </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        {showOwnerPortalLink ? (
-          <DropdownMenuItem render={<Link href="/owner-portal" />}>
-            <ArrowLeftRight className="size-4" />
-            Switch to owner portal
-          </DropdownMenuItem>
+        {showStaffAppLink ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem render={<Link href="/dashboard" />}>
+              <ArrowLeftRight className="size-4" />
+              Switch to staff app
+            </DropdownMenuItem>
+          </>
         ) : null}
-        <DropdownMenuItem render={<Link href="/settings" />}>
-          <Settings className="size-4" />
-          Settings
-        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <form action={signOut}>
           <DropdownMenuItem

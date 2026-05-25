@@ -41,3 +41,10 @@ export function isVendorUser(roles: UserRole[]): boolean {
 export function isTenantUser(roles: UserRole[]): boolean {
   return hasAnyRole(roles, ["TENANT"]);
 }
+
+/** External owner/investor user (owner portal). Role-only check —
+ * portal admission also admits any user with a property_owners row, see
+ * `hasAnyPropertyOwnership` in src/lib/data/property-owners.ts. */
+export function isInvestorUser(roles: UserRole[]): boolean {
+  return hasAnyRole(roles, ["INVESTOR"]);
+}
