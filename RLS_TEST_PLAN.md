@@ -11,8 +11,9 @@
 > (Suite 11) 10/10 (2026-05-23), tenant_invites lifecycle (Suite 9)
 > 9/9 (2026-05-23), units/properties tenant-self + lease-mediated
 > (Suite 10) 11/11 (2026-05-23). Phase 4 complete: leasing CRM
-> (Suite 13) 31/31 (2026-05-24). All 181 executed assertions pass;
-> 0 errored.**
+> (Suite 13) 31/31 (2026-05-24). Phase 5 complete: entities (Suite 14)
+> 25/25 (2026-05-24), owner portal + recursion safety (Suite 15)
+> 32/32 (2026-05-24). All 238 executed assertions pass; 0 errored.**
 >
 > **Phase 3 RLS coverage gap CLOSED.** All six Phase 3 suites (7-12) are
 > now authored and passing.
@@ -21,9 +22,17 @@
 > (leads / tours / applications) plus the slice-9d cross-cutting changes
 > (tenants.source_application_id additive column +
 > create_lease_with_tenants RPC authority widening) are now verified by
-> automated test. Gate 1 §12 sign-off can reference this suite as Phase
-> 4's policy-test surface. Human RLS sign-off remains outstanding — see
-> SECURITY_REVIEW.md.
+> automated test.
+>
+> **Phase 5 RLS coverage CLOSED.** Three new entity tables (rent_charges,
+> payments, property_owners) verified by Suite 14. Owner-self read
+> branches across six drop-and-recreated _select policies + the six
+> SECURITY DEFINER recursion-fix helpers + the dedicated R1-R7
+> recursion-safety assertion class verified by Suite 15. Cumulative
+> regression run 2026-05-24 confirmed zero pre-existing-suite
+> regressions. Gate 1 §13 sign-off can reference these suites as
+> Phase 5's policy-test surface. Human RLS sign-off remains outstanding —
+> see SECURITY_REVIEW.md.
 >
 > Run against the dev database over the Session pooler connection. Human RLS
 > sign-off remains outstanding — see SECURITY_REVIEW.md.
@@ -374,6 +383,112 @@ absence of an RLS rule, not the presence of an app-layer rule.
 | X3 | Org A MAINTENANCE_TECH | `create_lease_with_tenants(Org A, …)` | ✅ **rejected** SQLSTATE 42501 (widening was to can_write_tenants, not is_org_staff) |
 | X4 | Org A PROPERTY_MANAGER | `insert tenants(..., source_application_id := App-A)` | ✅ allowed; column populated (additive column landed correctly) |
 
+## 4m. Phase 5 Suite 14 — entities (rent_charges / payments / property_owners)
+
+Implemented in `supabase/tests/rls_phase5_entities.sql`. Covers the three
+new Phase 5 entity tables introduced by slices 10a (rent_charges), 10b
+(payments), and 10e (property_owners junction). Same density as Suite 13
+(read cohort + write gating + §8.1 cross-org FK pins per FK).
+
+Covered migrations:
+- `20260601000100_phase5_rent_charges.sql` — table + 4 policies with
+  §8.1 pins on `lease_id` / `tenant_id` / `unit_id`
+- `20260602000100_phase5_payments.sql` — table + 4 policies with §8.1
+  pins on `charge_id` / `tenant_id` / `recorded_by` / conditional
+  `refunded_by`
+- `20260603000100_phase5_owner_portal.sql` — `property_owners`
+  junction + 4 policies. **Writes manager-only (`is_org_manager`) —
+  NOT `can_write_tenants`** — granting ownership has financial-data
+  implications, LEASING_AGENT excluded.
+
+| # | Acting as | Action | Expected |
+|---|---|---|---|
+| C1 | Org A PM | `select` `rent_charges` | ✅ 1 row (staff branch) |
+| C2 | Org A tenant T1 | `select` `rent_charges` | ✅ 1 row (tenant-self branch) |
+| C3 | Org A MT | `select` `rent_charges` | ✅ **0 rows** (narrow read — MT NOT can_write_tenants) |
+| C4 | Org B PM | `select` Org A `rent_charges` | ✅ **0 rows** (cross-org isolation) |
+| C5 | Org A PM | `insert` with same-org FKs | ✅ allowed |
+| C6 | Org A MT | `insert` rent_charge | ✅ **rejected** (can_write_tenants gate) |
+| C7 | Org A PM | `insert` with cross-org `lease_id` | ✅ **rejected** (§8.1 FK pin) |
+| C8 | Org A PM | `insert` with cross-org `tenant_id` | ✅ **rejected** (§8.1 FK pin) |
+| Y1 | Org A PM | `select` `payments` | ✅ 1 row |
+| Y2 | Org A tenant T1 | `select` `payments` | ✅ 1 row (tenant-self) |
+| Y3 | Org A MT | `select` `payments` | ✅ **0 rows** (narrow read) |
+| Y4 | Org B PM | `select` Org A `payments` | ✅ **0 rows** |
+| Y5 | Org A PM | `insert` with same-org FKs | ✅ allowed |
+| Y6 | Org A MT | `insert` payment | ✅ **rejected** |
+| Y7 | Org A PM | `insert` with cross-org `charge_id` | ✅ **rejected** (§8.1 FK pin) |
+| Y8 | Org A PM | `insert` with cross-org `tenant_id` | ✅ **rejected** (§8.1 FK pin) |
+| J1 | Org A PM | `select` `property_owners` | ✅ 1 row (staff branch) |
+| J2 | Org A INVESTOR | `select` `property_owners` | ✅ 1 row (self-read; `user_id = auth.uid()`) |
+| J3 | Org B PM | `select` Org A `property_owners` | ✅ **0 rows** |
+| J4 | Org A PM | `insert` ownership grant | ✅ allowed (is_org_manager) |
+| J5 | Org A LA | `insert` ownership grant | ✅ **rejected** (manager-only — LA admitted by can_write_tenants but NOT is_org_manager) |
+| J6 | Org A MT | `insert` ownership grant | ✅ **rejected** |
+| J7 | Org A INVESTOR | self-grant ownership | ✅ **rejected** (INVESTOR cannot self-grant — manager-only write) |
+| J8 | Org A PM | `insert` with cross-org `user_id` | ✅ **rejected** (§8.1 FK pin) |
+| J9 | Org A PM | `insert` with cross-org `property_id` | ✅ **rejected** (§8.1 FK pin) |
+
+## 4n. Phase 5 Suite 15 — owner portal + recursion safety
+
+Implemented in `supabase/tests/rls_phase5_owner_portal.sql`. Covers the
+owner-self read branches across six drop-and-recreated `_select`
+policies (slice 10e), drop-and-recreate preservation of staff +
+tenant-self branches, dual-mode access (OWNER + property_owners), and
+the **RECURSION-SAFETY assertion class (R1-R7)** — the codified slice
+10e incident lesson.
+
+Pre-recursion-fix (commit `9685840`), the slice 10e owner-self branches
+used inline EXISTS subqueries that joined other RLS-protected tables in
+chains. The chain formed a cycle across `units ⇄ leases ⇄ rent_charges
+⇄ payments`. Postgres aborted with SQLSTATE 42P17 "infinite recursion
+detected in policy for relation X". The recursion fix
+(`20260603000200_phase5_owner_portal_recursion_fix.sql`) introduced six
+SECURITY DEFINER helpers (`user_can_see_property` / `_unit` / `_building`
+/ `_lease` / `_rent_charge` / `_payment`) that bypass RLS on the chain
+walk inside the function body, breaking the cycle.
+
+R1-R7 codifies the lesson: any RLS-gated table whose policy uses a
+junction-table-mediated portal isolation pattern must include an
+authenticated-role `count(*)` smoke that completes without 42P17.
+R1-R7 runs as INVESTOR I1 — the role context that exercises the
+helper-wrapped owner-self branches.
+
+| # | Acting as | Action | Expected | Helper exercised |
+|---|---|---|---|---|
+| O1 | INVESTOR I1 (owns Prop-A) | `select properties where id=Prop-A` | ✅ 1 row | `user_can_see_property` |
+| O2 | INVESTOR I1 | `select units where id=Unit-A1` | ✅ 1 row | `user_can_see_unit` |
+| O3 | INVESTOR I1 | `select buildings where id=Bldg-A1` | ✅ 1 row | `user_can_see_building` |
+| O4 | INVESTOR I1 | `select leases where id=Lease-A1` | ✅ 1 row | `user_can_see_lease` |
+| O5 | INVESTOR I1 | `select rent_charges where id=Charge-A1` | ✅ 1 row | `user_can_see_rent_charge` |
+| O6 | INVESTOR I1 | `select payments where id=Pay-A1` | ✅ 1 row | `user_can_see_payment` (deepest chain) |
+| O7 | INVESTOR I2 (owns Prop-C) | `select properties where id=Prop-A` | ✅ **0 rows** (cross-owner) | |
+| O8 | INVESTOR I2 | `select units where id=Unit-A1` | ✅ **0 rows** | |
+| O9 | INVESTOR I2 | `select buildings where id=Bldg-A1` | ✅ **0 rows** | |
+| O10 | INVESTOR I2 | `select leases where id=Lease-A1` | ✅ **0 rows** | |
+| O11 | INVESTOR I2 | `select rent_charges` | ✅ **0 rows** | |
+| O12 | INVESTOR I2 | `select payments` | ✅ **0 rows** | |
+| O13 | tenant T1 | `select leases` | ✅ 1 row (tenant-self preserved via tenants.lease_id) | |
+| O14 | tenant T1 | `select rent_charges` | ✅ 1 row (tenant-self preserved) | |
+| O15 | tenant T1 | `select payments` | ✅ 1 row (tenant-self preserved) | |
+| O16 | tenant T1 | `select units` | ✅ 1 row (M3LU lease-mediated preserved) | |
+| O17 | tenant T1 | `select properties` | ✅ 1 row (M3LU lease-mediated preserved) | |
+| O18 | PM-A | `select properties` | ✅ 2 rows (staff branch preserved) | |
+| O19 | PM-A | `select buildings` | ✅ 1 row (staff preserved) | |
+| O20 | PM-A | `select units` | ✅ 2 rows (staff preserved) | |
+| O21 | PM-A | `select leases` | ✅ 1 row (staff preserved) | |
+| O22 | PM-A | `select rent_charges` | ✅ 1 row (staff preserved) | |
+| O23 | PM-A | `select payments` | ✅ 1 row (staff preserved) | |
+| D1 | DUAL user (OWNER + property_owners(Prop-A)) | `select properties` | ✅ 2 rows (staff branch admits all org properties; owner branch redundant for this user — dual-mode reads OR cleanly) | |
+| D2 | INVESTOR I1 (no tenant row) | `select rent_charges` | ✅ 1 row (owner-self only; no tenant-self leakage) | |
+| R1 | INVESTOR I1 | `select count(*) from properties` | ✅ completes (no SQLSTATE 42P17) | recursion-safety smoke |
+| R2 | INVESTOR I1 | `select count(*) from units` | ✅ completes | recursion-safety smoke |
+| R3 | INVESTOR I1 | `select count(*) from buildings` | ✅ completes | recursion-safety smoke |
+| R4 | INVESTOR I1 | `select count(*) from leases` | ✅ completes (pre-fix this triggered 42P17) | recursion-safety smoke |
+| R5 | INVESTOR I1 | `select count(*) from rent_charges` | ✅ completes | recursion-safety smoke |
+| R6 | INVESTOR I1 | `select count(*) from payments` | ✅ completes (deepest chain) | recursion-safety smoke |
+| R7 | INVESTOR I1 | `select count(*) from property_owners` | ✅ completes | recursion-safety smoke |
+
 ## 5. How to run
 
 ```bash
@@ -391,6 +506,8 @@ npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_units_properties_tenant_sel
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_maintenance_tenant_self.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase3_messages_immutable.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase4_leasing.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase5_entities.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase5_owner_portal.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -419,3 +536,6 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 9 / 9, 0 errored | `rls_phase3_tenant_invites_lifecycle.sql` — Suite 9 — I1-I9 (tenant_invites can_write_tenants gating + mutual-exclusion CHECK + revoke lifecycle) |
 | 2026-05-23 | `scripts/run-sql.ts` (pg) | 11 / 11, 0 errored | `rls_phase3_units_properties_tenant_self.sql` — Suite 10 — U1-U6 + P1-P5 (units/properties tenant-self direct + lease-mediated, ended-lease regression) |
 | 2026-05-24 | `scripts/run-sql.ts` (pg) | 31 / 31, 0 errored | `rls_phase4_leasing.sql` — Suite 13 — K1-K8 (leads cohort + §8.1 FK pins), T1-T9 (tours cohort + 3 FK pins), A1-A10 (applications cohort + 3 FK pins + A10 RLS-does-not-enforce-status-transitions), X1-X4 (create_lease_with_tenants widened authority + source_application_id additive column) — closes Phase 4 RLS coverage gap |
+| 2026-05-24 | `scripts/run-sql.ts` (pg) | 25 / 25, 0 errored | `rls_phase5_entities.sql` — Suite 14 — C1-C8 (rent_charges cohort + §8.1 FK pins), Y1-Y8 (payments cohort + §8.1 FK pins), J1-J9 (property_owners junction — staff/self read + manager-only write + INVESTOR self-grant rejection + §8.1 FK pins) |
+| 2026-05-24 | `scripts/run-sql.ts` (pg) | 32 / 32, 0 errored | `rls_phase5_owner_portal.sql` — Suite 15 — O1-O6 (owner-self positive admit, exercises 6 SECURITY DEFINER helpers), O7-O12 (cross-owner deny), O13-O17 (tenant-self preservation post drop-and-recreate), O18-O23 (staff branch preservation), D1-D2 (dual-mode + no-leakage), R1-R7 (recursion-safety class — codifies the slice 10e incident lesson) |
+| 2026-05-24 | `scripts/run-sql.ts` (pg) | **15 / 15 suites pass — 238 / 238 cumulative** | full regression run across all 15 suites post-Phase 5; zero pre-existing-suite regressions from slice 10e drop-and-recreate operations |
