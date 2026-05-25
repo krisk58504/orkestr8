@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2 } from "lucide-react";
+import Image from "next/image";
 import { APP_NAME } from "@/lib/constants";
 
 export default function InviteLayout({
@@ -10,10 +10,17 @@ export default function InviteLayout({
       <div className="w-full max-w-md">
         <Link
           href="/"
-          className="mb-8 flex items-center justify-center gap-2 font-semibold"
+          className="mb-8 flex items-center justify-center"
+          aria-label={APP_NAME}
         >
-          <Building2 className="size-6" />
-          <span className="text-lg">{APP_NAME}</span>
+          <Image
+            src="/logo-stacked.png"
+            alt={APP_NAME}
+            width={400}
+            height={400}
+            priority
+            className="h-20 w-auto"
+          />
         </Link>
         <div className="rounded-xl border bg-card p-6 shadow-sm sm:p-8">
           {children}

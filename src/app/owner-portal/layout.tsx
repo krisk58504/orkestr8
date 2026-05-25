@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Briefcase } from "lucide-react";
+import Image from "next/image";
 import { OwnerPortalNav } from "@/components/owner-portal/owner-portal-nav";
 import { OwnerUserMenu } from "@/components/owner-portal/owner-user-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -40,7 +40,13 @@ export default async function OwnerPortalLayout({
       <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
         <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-2">
-            <Briefcase className="size-5 shrink-0" />
+            <Image
+              src="/logo-mark.png"
+              alt="Orkestr8"
+              width={64}
+              height={64}
+              className="size-14 shrink-0"
+            />
             <span className="truncate font-semibold">{orgName}</span>
             <span className="hidden text-xs text-muted-foreground sm:inline">
               Owner Portal

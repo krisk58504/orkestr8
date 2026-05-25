@@ -21,7 +21,7 @@ export function Topbar({
   const primaryRole = context.roles[0];
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:px-6">
+    <header className="sticky top-0 z-30 flex h-24 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:px-6">
       <MobileNav extras={navExtras} />
 
       <div className="relative hidden w-full max-w-sm sm:block">

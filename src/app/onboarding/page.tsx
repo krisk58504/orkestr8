@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Building2 } from "lucide-react";
+import Image from "next/image";
 import { OnboardingForm } from "@/components/onboarding/onboarding-form";
 import { getAuthUser, getSessionContext } from "@/lib/auth/session";
 import { APP_NAME } from "@/lib/constants";
@@ -18,9 +18,15 @@ export default async function OnboardingPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-muted/40 px-4 py-12">
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center justify-center gap-2 font-semibold">
-          <Building2 className="size-6" />
-          <span className="text-lg">{APP_NAME}</span>
+        <div className="mb-8 flex items-center justify-center">
+          <Image
+            src="/logo-stacked.png"
+            alt={APP_NAME}
+            width={400}
+            height={400}
+            priority
+            className="h-20 w-auto"
+          />
         </div>
         <div className="rounded-xl border bg-card p-6 shadow-sm sm:p-8">
           <div className="mb-6 space-y-1 text-center">

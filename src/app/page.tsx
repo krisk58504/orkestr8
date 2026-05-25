@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowRight, Building2, ShieldCheck, Sparkles } from "lucide-react";
+import Image from "next/image";
+import { ArrowRight, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 
@@ -7,10 +8,20 @@ export default function LandingPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-2">
-          <Building2 className="size-6" />
-          <span className="text-lg font-semibold">{APP_NAME}</span>
-        </div>
+        <Link
+          href="/"
+          className="flex items-center"
+          aria-label={APP_NAME}
+        >
+          <Image
+            src="/logo-horizontal.png"
+            alt={APP_NAME}
+            width={480}
+            height={128}
+            priority
+            className="h-24 w-auto"
+          />
+        </Link>
         <div className="flex items-center gap-2">
           <Button variant="ghost" render={<Link href="/login" />}>
             Sign in

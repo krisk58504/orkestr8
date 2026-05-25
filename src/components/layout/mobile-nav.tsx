@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Menu } from "lucide-react";
+import Image from "next/image";
+import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -27,9 +28,15 @@ export function MobileNav({ extras }: { extras?: NavSection[] }) {
         <span className="sr-only">Open navigation</span>
       </SheetTrigger>
       <SheetContent side="left" className="w-72 p-0">
-        <SheetTitle className="flex h-14 items-center gap-2 border-b px-5 font-semibold">
-          <Building2 className="size-5" />
-          {APP_NAME}
+        <SheetTitle className="flex h-24 items-center justify-center border-b px-5">
+          <Image
+            src="/logo-stacked.png"
+            alt={APP_NAME}
+            width={624}
+            height={546}
+            className="h-16 w-auto"
+          />
+          <span className="sr-only">{APP_NAME}</span>
         </SheetTitle>
         <div className="px-3 py-4">
           <NavLinks onNavigate={() => setOpen(false)} extras={extras} />
