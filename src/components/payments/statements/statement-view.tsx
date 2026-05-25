@@ -277,7 +277,7 @@ export function StatementView({
           <dd className="text-right">{formatAmount(total_charges)}</dd>
           <dt className="text-muted-foreground">Total payments</dt>
           <dd className="text-right">−{formatAmount(total_payments)}</dd>
-          <dt className="border-t pt-1 font-semibold">Closing balance</dt>
+          <dt className="border-t pt-1 font-semibold">Net activity for period</dt>
           <dd className="border-t pt-1 text-right font-semibold">
             {formatAmount(closing_balance)}
           </dd>
@@ -288,6 +288,10 @@ export function StatementView({
           <dt className="text-muted-foreground">Open charges (today)</dt>
           <dd className="text-right">{current_open_charge_count}</dd>
         </dl>
+        <p className="pt-2 text-xs text-muted-foreground">
+          Net activity reflects cash flow within the statement period only.
+          For the tenant&apos;s current ledger position, see Current balance.
+        </p>
       </section>
     </div>
   );
