@@ -51,10 +51,19 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      {/* Sidebar and Topbar are hidden during print so statement pages
+          (and any future print-styled surfaces) render edge-to-edge.
+          Print precedent set in slice 10d. */}
+      <div className="print:hidden">
+        <Sidebar />
+      </div>
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar context={context} showOwnerPortalLink={showOwnerPortalLink} />
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <div className="print:hidden">
+          <Topbar context={context} showOwnerPortalLink={showOwnerPortalLink} />
+        </div>
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 print:p-0">
+          {children}
+        </main>
       </div>
     </div>
   );

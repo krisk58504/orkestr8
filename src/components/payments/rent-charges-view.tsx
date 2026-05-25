@@ -2,8 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Ban, CalendarPlus, FileBarChart, Plus, Receipt } from "lucide-react";
+import {
+  Ban,
+  CalendarPlus,
+  FileBarChart,
+  FileText,
+  Plus,
+  Receipt,
+} from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
 import { voidRentCharge } from "@/app/(app)/payments/actions";
 import { GenerateChargesDialog } from "@/components/payments/generate-charges-dialog";
 import { PaymentFormSheet } from "@/components/payments/payment-form-sheet";
@@ -246,7 +254,26 @@ export function RentChargesView({
                 const canPay =
                   charge.status !== "voided" && charge.status !== "paid";
                 const canVoid = charge.status !== "voided";
-                if (!canPay && !canVoid) return null;
+                // Statement date range pre-fills from the charge's period
+                // when available; otherwise the calendar month containing
+                // the due_date.
+                let stmtFrom: string;
+                let stmtTo: string;
+                if (charge.period_start && charge.period_end) {
+                  stmtFrom = charge.period_start;
+                  stmtTo = charge.period_end;
+                } else {
+                  const due = new Date(charge.due_date);
+                  const first = new Date(
+                    Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), 1),
+                  );
+                  const last = new Date(
+                    Date.UTC(due.getUTCFullYear(), due.getUTCMonth() + 1, 0),
+                  );
+                  stmtFrom = first.toISOString().slice(0, 10);
+                  stmtTo = last.toISOString().slice(0, 10);
+                }
+                const stmtHref = `/payments/statements/${charge.tenant_id}?from=${stmtFrom}&to=${stmtTo}`;
                 return (
                   <>
                     {canPay ? (
@@ -257,6 +284,10 @@ export function RentChargesView({
                         Record payment
                       </DropdownMenuItem>
                     ) : null}
+                    <DropdownMenuItem render={<Link href={stmtHref} />}>
+                      <FileText className="size-4" />
+                      Generate statement
+                    </DropdownMenuItem>
                     {canVoid ? (
                       <DropdownMenuItem
                         variant="destructive"
