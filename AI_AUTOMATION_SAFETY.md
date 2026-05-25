@@ -78,6 +78,11 @@ or automation runs until a human explicitly raises the mode.
   action type. Replaces the Phase 1 placeholder rules with a real
   Claude Sonnet call via Vercel AI SDK + `generateObject` with Zod
   schema validation.
+- Owner-portal property summaries on `/owner-portal/properties/[id]` —
+  owner-facing, `summarize` action type. Generates a per-property
+  narrative + highlights from last-30-day activity. Same Claude
+  Sonnet model, same cost-tracking, same 10/min/org rate limit
+  (shared quota with maintenance triage).
 
 **Model in use**:
 - Provider: Anthropic via `@ai-sdk/anthropic` 3.x

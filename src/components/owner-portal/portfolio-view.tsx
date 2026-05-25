@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Briefcase, Building, DoorOpen } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -32,7 +33,12 @@ export function PortfolioView({
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {portfolio.map((property) => (
-        <Card key={property.id}>
+        <Link
+          key={property.id}
+          href={`/owner-portal/properties/${property.id}`}
+          className="block transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg"
+        >
+        <Card className="h-full">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">{property.name}</CardTitle>
             <p className="text-xs text-muted-foreground">
@@ -72,6 +78,7 @@ export function PortfolioView({
             </div>
           </CardContent>
         </Card>
+        </Link>
       ))}
     </div>
   );

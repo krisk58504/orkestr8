@@ -146,6 +146,8 @@ export type Database = {
           planned_units: number;
           description: string | null;
           is_active: boolean;
+          ai_summary: Json | null;
+          ai_summary_generated_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -164,6 +166,8 @@ export type Database = {
           planned_units?: number;
           description?: string | null;
           is_active?: boolean;
+          ai_summary?: Json | null;
+          ai_summary_generated_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
