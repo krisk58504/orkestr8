@@ -30,6 +30,10 @@ export type Database = {
           status: Database["public"]["Enums"]["organization_status"];
           ai_mode: Database["public"]["Enums"]["ai_mode"];
           email_mode: Database["public"]["Enums"]["email_mode"];
+          automation_mode: Database["public"]["Enums"]["automation_mode_type"];
+          automation_freeze: boolean;
+          automation_freeze_at: string | null;
+          automation_freeze_by: string | null;
           logo_url: string | null;
           primary_color: string | null;
           billing_email: string | null;
@@ -45,6 +49,10 @@ export type Database = {
           status?: Database["public"]["Enums"]["organization_status"];
           ai_mode?: Database["public"]["Enums"]["ai_mode"];
           email_mode?: Database["public"]["Enums"]["email_mode"];
+          automation_mode?: Database["public"]["Enums"]["automation_mode_type"];
+          automation_freeze?: boolean;
+          automation_freeze_at?: string | null;
+          automation_freeze_by?: string | null;
           logo_url?: string | null;
           primary_color?: string | null;
           billing_email?: string | null;
@@ -432,6 +440,69 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["automation_logs"]["Insert"]>;
+        Relationships: [];
+      };
+      automations: {
+        Row: {
+          id: string;
+          organization_id: string;
+          automation_type: string;
+          name: string;
+          description: string | null;
+          enabled: boolean;
+          schedule_cron: string | null;
+          config: Json;
+          last_run_at: string | null;
+          last_run_status: string | null;
+          created_at: string;
+          created_by: string | null;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          automation_type: string;
+          name: string;
+          description?: string | null;
+          enabled?: boolean;
+          schedule_cron?: string | null;
+          config?: Json;
+          last_run_at?: string | null;
+          last_run_status?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["automations"]["Insert"]>;
+        Relationships: [];
+      };
+      automation_runs: {
+        Row: {
+          id: string;
+          organization_id: string;
+          automation_id: string;
+          started_at: string;
+          ended_at: string | null;
+          /** 'running' | 'ok' | 'failed' | 'skipped' */
+          status: string;
+          idempotency_key: string | null;
+          result: Json | null;
+          error_message: string | null;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          automation_id: string;
+          started_at?: string;
+          ended_at?: string | null;
+          status: string;
+          idempotency_key?: string | null;
+          result?: Json | null;
+          error_message?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["automation_runs"]["Insert"]>;
         Relationships: [];
       };
       report_insights: {
@@ -1131,6 +1202,7 @@ export type Database = {
         | "suggest_only"
         | "auto_with_approval"
         | "fully_automated";
+      automation_mode_type: "disabled" | "enabled" | "paused";
       email_mode: "test" | "production";
       organization_status: "trial" | "active" | "suspended";
       property_type:

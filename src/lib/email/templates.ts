@@ -15,6 +15,7 @@ export const EMAIL_TEMPLATE = {
   vendorInvoiceSubmitted: "vendor_invoice.submitted",
   tenantInvite: "tenant.invite",
   tenantMessage: "tenant.message",
+  vendorDocExpiry: "vendor_document.expiring",
 } as const;
 
 export type EmailTemplateId =
@@ -284,5 +285,49 @@ You have new messages from the team at ${data.orgName}.
 Open your conversation: ${data.conversationUrl}
 
 Sign in to your tenant portal to read and reply.`;
+  return { subject, html, text };
+}
+
+// --- Vendor document expiry (Phase 7 slice 1) ------------------------------
+
+export type VendorDocExpiryData = {
+  vendorName: string;
+  documentName: string;
+  documentType: string;
+  expiresOn: string;
+  daysUntilExpiry: number;
+};
+
+export function vendorDocExpiryEmail(
+  data: VendorDocExpiryData,
+): EmailContent {
+  const subject =
+    data.daysUntilExpiry <= 7
+      ? `Action needed: ${data.documentType} expires in ${data.daysUntilExpiry} days`
+      : `Reminder: ${data.documentType} expires in ${data.daysUntilExpiry} days`;
+  const rows: [string, string][] = [
+    ["Vendor", data.vendorName],
+    ["Document", data.documentName],
+    ["Type", data.documentType],
+    ["Expires on", data.expiresOn],
+    ["Days remaining", String(data.daysUntilExpiry)],
+  ];
+  const urgency =
+    data.daysUntilExpiry <= 7
+      ? "Please upload the renewed document as soon as possible — expired documents may block new job assignments."
+      : "Please plan to upload the renewed document before the expiration date to avoid any interruption.";
+  const html = layout(
+    "Document expiring soon",
+    paragraph(`Hello ${data.vendorName}, one of your compliance documents is expiring soon.`) +
+      detailsHtml(rows) +
+      paragraph(urgency),
+  );
+  const text = `Hello ${data.vendorName},
+
+One of your compliance documents is expiring soon.
+
+${detailsText(rows)}
+
+${urgency}`;
   return { subject, html, text };
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Bot, Mail, ShieldCheck } from "lucide-react";
+import { ArrowRight, Bot, Mail, ShieldCheck, Snowflake } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { isOwner } from "@/lib/auth/roles";
+import { isManager, isOwner } from "@/lib/auth/roles";
 import { getSessionContext } from "@/lib/auth/session";
-import { AI_MODE_LABELS, ORG_STATUS_META, ROLE_LABELS } from "@/lib/constants";
+import {
+  AI_MODE_LABELS,
+  AUTOMATION_MODE_LABELS,
+  ORG_STATUS_META,
+  ROLE_LABELS,
+} from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -33,6 +38,9 @@ export default async function SettingsPage() {
   const org = context.organization;
   const orgStatus = ORG_STATUS_META[org.status];
   const canManageAi = isOwner(context.roles);
+  const canManageAutomations = isManager(context.roles);
+  const automationMode = org.automation_mode ?? "enabled";
+  const automationFrozen = org.automation_freeze ?? false;
 
   return (
     <div className="space-y-6">
@@ -132,6 +140,36 @@ export default async function SettingsPage() {
                 inboxes. Production email requires explicit operator
                 configuration.
               </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-lg border p-3">
+            <Snowflake className="mt-0.5 size-4 text-muted-foreground" />
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">Automation engine</p>
+                <StatusBadge
+                  tone={automationFrozen ? "warning" : "info"}
+                >
+                  {automationFrozen
+                    ? "Frozen"
+                    : AUTOMATION_MODE_LABELS[automationMode]}
+                </StatusBadge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Cron-driven automations run as service-role. The off-switch
+                freezes everything for the org in one click.
+              </p>
+              {canManageAutomations ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  render={<Link href="/settings/automations" />}
+                >
+                  Manage automations
+                  <ArrowRight className="size-4" />
+                </Button>
+              ) : null}
             </div>
           </div>
         </CardContent>

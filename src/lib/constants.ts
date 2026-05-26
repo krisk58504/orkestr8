@@ -6,6 +6,7 @@
 import type {
   AiMode,
   ApplicationStatus,
+  AutomationMode,
   BuildingStatus,
   LeadSource,
   LeadStatus,
@@ -122,6 +123,24 @@ export const AI_MODE_LABELS: Record<AiMode, string> = {
   suggest_only: "Suggest only",
   auto_with_approval: "Auto with approval",
   fully_automated: "Fully automated",
+};
+
+// ---------------------------------------------------------------------------
+// Automation modes (Phase 7 — separate from ai_mode per Q11)
+// ---------------------------------------------------------------------------
+export const AUTOMATION_MODE_LABELS: Record<AutomationMode, string> = {
+  disabled: "Disabled",
+  enabled: "Enabled",
+  paused: "Paused",
+};
+
+export const AUTOMATION_MODE_DESCRIPTIONS: Record<AutomationMode, string> = {
+  disabled:
+    "Automations do not run. No log entries are written for skipped runs.",
+  enabled:
+    "Automations run on schedule. Default for new organizations.",
+  paused:
+    "Automations are paused but each skipped run is logged for review. Use for short-term quiet windows.",
 };
 
 /** AI modes that may take real action without per-action human approval. */
