@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Check, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -120,12 +121,12 @@ export function PricingTeaser() {
         </div>
 
         <div className="mt-10 text-center text-sm text-muted-foreground">
-          <a
-            href="#pricing-teaser"
+          <Link
+            href="/pricing"
             className="underline underline-offset-4 hover:text-foreground"
           >
-            See full pricing details →
-          </a>
+            See full pricing →
+          </Link>
         </div>
       </div>
     </section>
