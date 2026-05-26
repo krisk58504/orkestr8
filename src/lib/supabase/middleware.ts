@@ -8,7 +8,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { perfEnd, perfStart } from "@/lib/perf";
 import type { Database } from "@/lib/types/database";
 
-const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/error", "/invite"];
+// Marketing / pre-auth public surface. Add new public routes (e.g. /contact,
+// /about, /terms) to this list — anything not listed redirects unauthenticated
+// users to /login.
+const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/error", "/invite", "/pricing"];
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/") return true;
