@@ -587,6 +587,8 @@ npx tsx scripts/run-sql.ts supabase/tests/rls_phase5_owner_portal.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase6_ai_restrictive.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase6_rate_limit.sql
 npx tsx scripts/run-sql.ts supabase/tests/rls_phase6_report_insights.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase7_automations.sql
+npx tsx scripts/run-sql.ts supabase/tests/rls_phase7_automation_runs.sql
 # equivalent, if psql is available:
 #   psql "$DATABASE_URL" -f supabase/tests/rls_cross_org.sql
 ```
@@ -623,3 +625,5 @@ SQLSTATE means the test could not complete (an infrastructure error).
 | 2026-05-25 | `scripts/run-sql.ts` (pg) | **17 / 17 suites pass — 258 / 258 cumulative** | full regression run across all 17 suites post-Phase 6.1; zero pre-existing-suite regressions from Phase 6.1 migration (ai_logs cost columns + RESTRICTIVE policies). Suite 14 specifically re-verified because RESTRICTIVE ANDs with rent_charges + payments PERMISSIVE policies; all existing assertions pass because `is_ai_actor()` returns false in non-flagged contexts. |
 | 2026-05-25 | `scripts/run-sql.ts` (pg) | 12 / 12, 0 errored | `rls_phase6_report_insights.sql` — Suite 18 — RI1-RI3 (cross-org SELECT/INSERT + staff-org-self), RI4-RI6 (INVESTOR generator-restricted J3 — own only, no cross-investor, no staff-generated), RI7-RI10 (INSERT shape — empty scope, scoped, INVESTOR own-property, generated_by spoof rejection), RI11 (report_type CHECK), RI12 (UPDATE+DELETE both blocked — no policies) |
 | 2026-05-25 | `scripts/run-sql.ts` (pg) | **18 / 18 suites pass — 270 / 270 cumulative** | full regression run post-Phase 6.2 slice 11c; zero pre-existing-suite regressions from the new report_insights table |
+| 2026-05-26 | (pending walk-test) | 10 expected | `rls_phase7_automations.sql` — Suite 19 — AU1-AU2 (PERMISSIVE SELECT + org isolation), AU3-AU4 (PERMISSIVE WRITE manager-only + cross-org WITH-CHECK), AU5 (LEASING_AGENT not manager), AU6 (TENANT not staff), AU7-AU9 (RESTRICTIVE no_ai_writes block matrix), AU10 (PERMISSIVE regression). Phase 7 slice 1 substrate. |
+| 2026-05-26 | (pending walk-test) | 6 expected | `rls_phase7_automation_runs.sql` — Suite 20 — AR1-AR2 (manager SELECT + org isolation), AR3 (LEASING_AGENT staff-but-not-manager denied), AR4 (TENANT denied), AR5-AR6 (no client INSERT/UPDATE — service-role-only). Phase 7 slice 1 substrate. |
