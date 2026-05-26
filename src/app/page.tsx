@@ -15,8 +15,13 @@ export default async function LandingPage() {
     redirect("/dashboard");
   }
 
+  // Force dark scope on the landing tree only. Tailwind's `dark` variant
+  // resolves up the DOM, so wrapping with `dark` here scopes the styling
+  // to this subtree without touching the global next-themes ThemeProvider
+  // — /login, /signup, /onboarding, and the authenticated app continue to
+  // respect the user's system / theme-toggle preference.
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="dark flex min-h-screen flex-col bg-background text-foreground">
       <LandingHeader />
       <main className="flex-1">
         <Hero />
