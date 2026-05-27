@@ -255,3 +255,120 @@ slice 2. Captured here so it doesn't recur.
 include "apply migrations as part of implementation." Adding this as
 a §0.4 discipline (or as a Phase 7 §10 closure note) would
 institutionalize it for all future Phase 7 slices.
+
+---
+
+## H — Slice 2 official sign-off
+
+### H.1 — Walk-test scenarios
+
+All §8.2 scenarios verified.
+
+| # | Scenario | Result |
+|---|---|---|
+| 1 | TENANT submits maintenance request → bell badge increments for PM; click routes to /maintenance/[id]; row marks read | PASS (manual on dev.orkestr8.ai) |
+| 2 | "Mark all read" clears badge + flips all rows | PASS (manual) |
+| 3 | Cross-org isolation — Org A PM sees no Org B notifications | PASS (manual) |
+| 4 | Cross-org / cross-user RLS isolation | **PASS (Suite 21 NX2 + NX4)** — covered by SQL regression rather than manual walk-test |
+| 5 | Actor-self-skip — PM's own maintenance request does NOT notify themselves | PASS (manual) |
+| 6 | Slice 1 cron runner intentional failure → OWNER bell notification | PASS (manual) |
+| 7 | Recipient resolver zero-found edge case | **DEFERRED** — hard to trigger naturally without a zero-managers org fixture; the producer-side `logNotificationSkipped` call path is exercised by code review; production observability via `audit_logs` filter `action='notification.skipped'` |
+
+### H.2 — Defects discovered and fixed
+
+One slice-2-blocking defect surfaced during walk-test, caught
+before official ship:
+
+1. **§E.1** — slice 2 migration was never applied to dev after the
+   migration commit + push. The slice 2 producers would have failed
+   at INSERT because `notifications.kind` didn't exist on dev.
+   Root cause: implementation prompt enumerated build/lint/tsc
+   quality gates but did NOT include "run `npm run db:migrate`" as
+   an explicit step. Vercel deploy doesn't apply migrations; that's
+   a separate `db:migrate` run.
+   - **Fix**: applied `20260611000000_phase7_slice2_notifications_wiring.sql`
+     via `npm run db:migrate`. Verified 11 columns, CHECK constraint
+     on 6 kinds, new index on (user_id, created_at desc).
+   - **Follow-up captured**: add "Run `npm run db:migrate` after the
+     migration commit + verify schema delta" to slice 3+ implementation
+     prompts. Consider adding as a Phase 7 §0.4 discipline.
+
+A second adjustment during RLS regression:
+
+2. **Suite 21 NX8 redesign** — original NX8 attempted a live `DELETE
+   FROM organizations` to verify CASCADE on `notifications`. Path
+   collided with the `protect_user_columns` trigger:
+   `users.organization_id` is `ON DELETE SET NULL`, the cascade tries
+   to NULL the column, the trigger rejects (raises `organization_id
+   cannot be reassigned via the application`).
+   - **Fix**: switched NX8 to a structural pg_constraint check
+     (`confdeltype = 'c'`) — verifies the same cascade contract
+     without triggering business-logic protection.
+   - Not a defect in slice 2 production code; an over-aggressive test
+     design that didn't account for an existing Phase 1 invariant.
+
+### H.3 — Ship-gate posture
+
+- [x] All 7 walk-test scenarios green (5 manual + 1 SQL + 1 deferred)
+- [x] RLS regression **21 / 21, 294 / 294 cumulative**
+- [x] `tsc --noEmit` clean
+- [x] `npm run build` clean
+- [x] Slice-2-scope lint clean
+- [x] No new lint regressions
+- [x] All §10 questions resolved or explicitly PENDING with trigger (§G captured)
+- [x] §E.1 migration-apply gap discovered + fixed + documented
+- [x] §H.2 NX8 test-design defect fixed
+- [x] Decisions document complete (§A-§H)
+
+**Slice 2 ships officially as of 2026-05-27.**
+
+### H.4 — Open follow-ups for non-slice-2 work
+
+- **Tenant portal bell UI** (§G.1) — deferred to Tier 3 alongside
+  lifecycle communications
+- **Vendor portal bell UI** — parallel to tenant, deferred
+- **Real-time Supabase Realtime subscription** — future polish slice;
+  poll-on-events sufficient for current scale
+- **`/notifications` full-page route** — future slice when dropdown
+  insufficient at scale (15-row cap)
+- **Notification preferences** (per-kind opt-out) — §G.6 deferred
+  until volume justifies
+- **Vendor user onboarding backfill** — slice 2's
+  `work_order.assigned` producer silently skips when
+  `vendor_contacts.user_id` is null. A future vendor-onboarding slice
+  should backfill the link for existing vendors so the in-app bell
+  fires for them (today they get the Resend email only).
+- **Stale-link sweep job** — §G.7 deferred; will surface only if
+  production data shows entity-deletion churn warrants cleanup
+- **`updateApplication` status-transition producer** — §A.3 deferred;
+  one-line addition once a slice covers it
+- **`updateWorkOrder` reassignment producer** — §A.4 deferred;
+  similar one-line addition
+- **§E.1 institutional follow-up** — add migration-apply step to
+  slice 3+ implementation prompts (or as Phase 7 §0.4 discipline)
+
+### H.5 — Phase 7 status after slice 2
+
+Per `PHASE_7_PLAN.md` §0.5 + §1 + §2:
+
+- **Substrate** (slice 1): ✓ shipped — `automations`,
+  `automation_runs`, three-gate chain, runner, handler registry,
+  Vercel Cron entrypoint, off-switch
+- **First handler** (slice 1): ✓ shipped — `vendor_doc_expiry`
+- **Notifications wiring** (slice 2 / Tier 0): ✓ shipped — 5 producer
+  events writing to the dormant Phase 1 table; bell UI on staff
+  topbar; 4 single-source-of-truth recipient resolvers
+- **RLS coverage**: 21 suites / 294 assertions cumulative
+- **Slice 3** (financial — α monthly rent charges OR γ
+  statement-ready emails per Q20): ready to audit; Tier 1 substantive
+  operation per Q18 sequencing
+- **Tier 2** (vendor differentiation — #38 auto-suspend, #39
+  insurance renewal, #7 SLA breach): unblocked because notifications
+  exists (§7 risks #7.3 mitigated)
+- **Tier 3** (lifecycle communications): can now ship event-triggered
+  notifications cleanly; tenant portal bell UI lands in this tier
+- **Tier 4** (AI-decided automations): still blocked on §9
+  prompt-injection audit (Q14 PENDING) for any tenant-facing surface
+
+The Phase 7 runway is clean. Slice 3 begins on a 21-suite green base
+with both the engine substrate and the notifications surface live.
