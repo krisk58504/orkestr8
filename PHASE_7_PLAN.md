@@ -341,8 +341,8 @@ const VendorDocExpiryConfig = z.object({
 
 **Execution shape**:
 
-1. Read all `vendor_documents` where `expires_at` is non-null and
-   `expires_at::date ∈ {today + 30, today + 14, today + 7}`
+1. Read all `vendor_documents` where `expires_on` is non-null and
+   `expires_on ∈ {today + 30, today + 14, today + 7}`
 2. For each match, build idempotency key `vendor_doc_expiry:${vendor_document_id}:${threshold_days}`
 3. If `automation_runs` already has a row with this key + status `'ok'`,
    skip (loop-prevention per Phase 6 audit §D1)
