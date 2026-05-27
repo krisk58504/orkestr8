@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/guards";
 import { canWriteTenants } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/data/audit";
+import {
+  logNotificationSkipped,
+  produceNotification,
+} from "@/lib/notifications/produce";
+import { resolveManagersForOrg } from "@/lib/notifications/recipients/managers";
 import { createClient } from "@/lib/supabase/server";
 import {
   applicationInputSchema,
@@ -86,6 +91,46 @@ export async function createApplication(
       applicant: `${parsed.data.applicant_first_name} ${parsed.data.applicant_last_name}`,
     },
   });
+
+  // Phase 7 slice 2 — produce in-app notifications only when the
+  // application lands directly in 'submitted' state. Drafts produce
+  // nothing — they're not yet in the leasing pipeline. The
+  // updateApplication status-transition producer is deferred (see
+  // PHASE_7_SLICE_2_IMPLEMENTATION_DECISIONS §A.3).
+  if (parsed.data.status === "submitted") {
+    try {
+      const actorId = guard.context.authUserId;
+      const managers = await resolveManagersForOrg(orgId, actorId);
+      if (managers.length === 0) {
+        await logNotificationSkipped({
+          organizationId: orgId,
+          actorId,
+          kind: "application.submitted",
+          reason: "no_recipients",
+          context: { application_id: data.id },
+        });
+      } else {
+        const applicantName = `${parsed.data.applicant_first_name} ${parsed.data.applicant_last_name}`;
+        for (const manager of managers) {
+          await produceNotification({
+            organizationId: orgId,
+            userId: manager.id,
+            actorUserId: actorId,
+            kind: "application.submitted",
+            title: `New application: ${applicantName}`,
+            link: `/applications/${data.id}`,
+            metadata: {
+              application_id: data.id,
+              unit_id: parsed.data.unit_id ?? null,
+              lead_id: parsed.data.lead_id ?? null,
+            },
+          });
+        }
+      }
+    } catch {
+      // best-effort — swallowed
+    }
+  }
 
   revalidatePath("/applications");
   revalidatePath("/dashboard");

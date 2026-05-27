@@ -14,6 +14,7 @@ import type {
   MaintenanceCategory,
   MaintenancePriority,
   MaintenanceStatus,
+  NotificationKind,
   OrganizationStatus,
   PaymentMethod,
   PropertyType,
@@ -123,6 +124,27 @@ export const AI_MODE_LABELS: Record<AiMode, string> = {
   suggest_only: "Suggest only",
   auto_with_approval: "Auto with approval",
   fully_automated: "Fully automated",
+};
+
+// ---------------------------------------------------------------------------
+// Notification kinds (Phase 7 slice 2 — CHECK-constrained at DB layer)
+// ---------------------------------------------------------------------------
+export const NOTIFICATION_KIND = {
+  info: "info",
+  maintenanceCreated: "maintenance.created",
+  workOrderAssigned: "work_order.assigned",
+  messageReceived: "message.received",
+  applicationSubmitted: "application.submitted",
+  automationRunFailed: "automation_run.failed",
+} as const;
+
+export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
+  info: "Info",
+  "maintenance.created": "New maintenance request",
+  "work_order.assigned": "Work order assigned",
+  "message.received": "New message",
+  "application.submitted": "New application",
+  "automation_run.failed": "Automation run failed",
 };
 
 // ---------------------------------------------------------------------------

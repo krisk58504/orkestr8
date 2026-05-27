@@ -7,6 +7,11 @@ import { requireSession } from "@/lib/auth/guards";
 import { canWriteTenants } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/data/audit";
 import { notifyTenantMessageReceived } from "@/lib/email/notifications";
+import {
+  logNotificationSkipped,
+  produceNotification,
+} from "@/lib/notifications/produce";
+import { resolveTenantUserForTenantId } from "@/lib/notifications/recipients/tenant";
 import { createClient } from "@/lib/supabase/server";
 
 export type ActionResult =
@@ -95,6 +100,40 @@ export async function sendStaffMessage(
     } catch {
       // best-effort — never rolls back the DB write
     }
+  }
+
+  // Phase 7 slice 2 — in-app notification to the tenant's portal user
+  // (recipient is the other party — tenant in this case). §G.1: write the
+  // row even though the tenant portal bell UI ships in a future slice.
+  try {
+    const actorId = guard.context.authUserId;
+    const tenantUser = await resolveTenantUserForTenantId(tenant.id);
+    if (!tenantUser) {
+      await logNotificationSkipped({
+        organizationId: orgId,
+        actorId,
+        kind: "message.received",
+        reason: "no_recipients",
+        context: { tenant_id: tenant.id, direction: "staff_to_tenant" },
+      });
+    } else {
+      await produceNotification({
+        organizationId: orgId,
+        userId: tenantUser.id,
+        actorUserId: actorId,
+        kind: "message.received",
+        title: `New message from ${guard.context.organization.name}`,
+        body: parsed.data.slice(0, 120),
+        link: `/portal/messages`,
+        metadata: {
+          tenant_id: tenant.id,
+          message_id: created.id,
+          direction: "staff_to_tenant",
+        },
+      });
+    }
+  } catch {
+    // best-effort — swallowed
   }
 
   revalidatePath("/messages");

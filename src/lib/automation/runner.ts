@@ -1,4 +1,6 @@
 import "server-only";
+import { produceNotification } from "@/lib/notifications/produce";
+import { resolveOwnersForOrg } from "@/lib/notifications/recipients/owner";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkAutomationGates } from "./gates";
 import { getHandler } from "./handlers";
@@ -126,6 +128,34 @@ export async function runAllAutomations(): Promise<RunnerSummary> {
       status: result.failed > 0 ? "blocked" : "executed",
       result: result as never,
     });
+
+    // Phase 7 slice 2 — notify OWNERs when a run had failures.
+    // System runner has no actor — produceNotification has no
+    // actorUserId, so the actor-self-skip never fires.
+    if (result.failed > 0) {
+      try {
+        const owners = await resolveOwnersForOrg(row.organization_id);
+        for (const owner of owners) {
+          await produceNotification({
+            organizationId: row.organization_id,
+            userId: owner.id,
+            kind: "automation_run.failed",
+            type: "error",
+            title: `Automation failed: ${row.automation_type}`,
+            body: `${result.failed} item(s) failed in the latest run`,
+            link: `/settings/automations`,
+            metadata: {
+              automation_id: row.id,
+              automation_type: row.automation_type,
+              attempted: result.attempted,
+              failed: result.failed,
+            },
+          });
+        }
+      } catch {
+        // best-effort — swallowed; the automation_logs row above is the canonical record
+      }
+    }
   }
 
   summary.duration_ms = Date.now() - start;

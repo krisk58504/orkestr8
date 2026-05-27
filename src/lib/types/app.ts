@@ -23,6 +23,17 @@ export type Tenant = Tables<"tenants">;
 export type TenantInvite = Tables<"tenant_invites">;
 export type AuditLog = Tables<"audit_logs">;
 export type Notification = Tables<"notifications">;
+/**
+ * Slice 2 notification kinds. CHECK-constrained at DB layer.
+ * Extend the union + the CHECK constraint together when new producers ship.
+ */
+export type NotificationKind =
+  | "info"
+  | "maintenance.created"
+  | "work_order.assigned"
+  | "message.received"
+  | "application.submitted"
+  | "automation_run.failed";
 export type AiLog = Tables<"ai_logs">;
 export type AutomationLog = Tables<"automation_logs">;
 export type Automation = Tables<"automations">;

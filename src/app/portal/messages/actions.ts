@@ -5,6 +5,11 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/guards";
 import { isTenantUser } from "@/lib/auth/roles";
 import { logAudit } from "@/lib/data/audit";
+import {
+  logNotificationSkipped,
+  produceNotification,
+} from "@/lib/notifications/produce";
+import { resolveManagersForOrg } from "@/lib/notifications/recipients/managers";
 import { createClient } from "@/lib/supabase/server";
 
 export type ActionResult =
@@ -76,6 +81,41 @@ export async function sendTenantMessage(body: string): Promise<ActionResult> {
 
   // No email notification on tenant→staff per spec — staff see it in their
   // inbox on next page load / refresh.
+
+  // Phase 7 slice 2 — in-app notification to org managers. Tenant is the
+  // actor; managers are the recipients.
+  try {
+    const actorId = guard.context.authUserId;
+    const managers = await resolveManagersForOrg(orgId, actorId);
+    if (managers.length === 0) {
+      await logNotificationSkipped({
+        organizationId: orgId,
+        actorId,
+        kind: "message.received",
+        reason: "no_recipients",
+        context: { tenant_id: tenant.id, direction: "tenant_to_staff" },
+      });
+    } else {
+      for (const manager of managers) {
+        await produceNotification({
+          organizationId: orgId,
+          userId: manager.id,
+          actorUserId: actorId,
+          kind: "message.received",
+          title: "New message from a tenant",
+          body: parsed.data.slice(0, 120),
+          link: `/messages/${tenant.id}`,
+          metadata: {
+            tenant_id: tenant.id,
+            message_id: created.id,
+            direction: "tenant_to_staff",
+          },
+        });
+      }
+    }
+  } catch {
+    // best-effort — swallowed
+  }
 
   revalidatePath("/portal/messages");
   revalidatePath("/messages");

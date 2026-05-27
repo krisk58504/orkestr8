@@ -360,8 +360,11 @@ export type Database = {
           title: string;
           body: string | null;
           type: string;
+          /** Semantic event identifier — slice 2 (e.g. 'maintenance.created'). CHECK-constrained. */
+          kind: string;
           link: string | null;
           is_read: boolean;
+          metadata: Json;
           created_at: string;
         };
         Insert: {
@@ -371,7 +374,9 @@ export type Database = {
           title: string;
           body?: string | null;
           type?: string;
+          kind?: string;
           link?: string | null;
+          metadata?: Json;
           is_read?: boolean;
           created_at?: string;
         };

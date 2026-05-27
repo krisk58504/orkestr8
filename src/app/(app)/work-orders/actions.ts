@@ -13,6 +13,11 @@ import {
   notifyWorkOrderAssigned,
   notifyWorkOrderStatusChanged,
 } from "@/lib/email/notifications";
+import {
+  logNotificationSkipped,
+  produceNotification,
+} from "@/lib/notifications/produce";
+import { resolveVendorContactUser } from "@/lib/notifications/recipients/vendor";
 import { createClient } from "@/lib/supabase/server";
 import { collectFieldErrors } from "@/lib/validations/shared";
 import {
@@ -114,6 +119,42 @@ export async function createWorkOrder(
         priority: MAINTENANCE_PRIORITY_META[parsed.data.priority].label,
         scheduledFor: parsed.data.scheduled_for,
       });
+
+      // Phase 7 slice 2 — in-app notification to the vendor's primary
+      // contact (if linked to an auth user). Email above is the fallback
+      // for unlinked vendors.
+      const orgId = guard.context.organization.id;
+      const actorId = guard.context.authUserId;
+      const vendorUser = await resolveVendorContactUser(
+        parsed.data.assigned_vendor_id,
+      );
+      if (!vendorUser) {
+        await logNotificationSkipped({
+          organizationId: orgId,
+          actorId,
+          kind: "work_order.assigned",
+          reason: "no_recipients",
+          context: {
+            work_order_id: data.id,
+            vendor_id: parsed.data.assigned_vendor_id,
+          },
+        });
+      } else {
+        await produceNotification({
+          organizationId: orgId,
+          userId: vendorUser.id,
+          actorUserId: actorId,
+          kind: "work_order.assigned",
+          title: `New work order: ${parsed.data.title}`,
+          body: `${propertyRes.data?.name ?? "Property"} • ${MAINTENANCE_PRIORITY_META[parsed.data.priority].label} priority`,
+          link: `/vendor-portal/work-orders/${data.id}`,
+          metadata: {
+            work_order_id: data.id,
+            vendor_id: parsed.data.assigned_vendor_id,
+            property_id: parsed.data.property_id,
+          },
+        });
+      }
     }
   } catch {
     // best-effort — swallowed

@@ -9,6 +9,11 @@ import {
 } from "@/lib/constants";
 import { logAudit } from "@/lib/data/audit";
 import { notifyMaintenanceRequestReceived } from "@/lib/email/notifications";
+import {
+  logNotificationSkipped,
+  produceNotification,
+} from "@/lib/notifications/produce";
+import { resolveManagersForOrg } from "@/lib/notifications/recipients/managers";
 import { createClient } from "@/lib/supabase/server";
 import {
   maintenanceRequestInputSchema,
@@ -95,6 +100,41 @@ export async function createMaintenanceRequest(
     });
   } catch {
     // best-effort — swallowed
+  }
+
+  // Phase 7 slice 2 — produce in-app notifications for org managers
+  // (separate from the email notification above). N-rows per §G.4.
+  try {
+    const orgId = guard.context.organization.id;
+    const actorId = guard.context.authUserId;
+    const managers = await resolveManagersForOrg(orgId, actorId);
+    if (managers.length === 0) {
+      await logNotificationSkipped({
+        organizationId: orgId,
+        actorId,
+        kind: "maintenance.created",
+        reason: "no_recipients",
+        context: { maintenance_request_id: data.id },
+      });
+    } else {
+      for (const manager of managers) {
+        await produceNotification({
+          organizationId: orgId,
+          userId: manager.id,
+          actorUserId: actorId,
+          kind: "maintenance.created",
+          title: `New maintenance request: ${parsed.data.title}`,
+          body: `${MAINTENANCE_PRIORITY_META[parsed.data.priority].label} priority`,
+          link: `/maintenance/${data.id}`,
+          metadata: {
+            maintenance_request_id: data.id,
+            property_id: parsed.data.property_id,
+          },
+        });
+      }
+    }
+  } catch {
+    // best-effort — swallowed; matches notifyMaintenance email pattern above
   }
 
   revalidatePath("/maintenance");
