@@ -865,3 +865,164 @@ proceeds against this audit once §10 questions are confirmed or
 explicitly deferred.
 
 **STATUS: ready for confirmation.**
+
+---
+
+## §G — §10 resolutions (audit-walk 2026-05-27)
+
+Plan-author resolved all 8 §10 open questions in the audit-walk on
+2026-05-27. This section is the permanent record. Slice 3
+implementation may begin against the now-fully-locked audit.
+
+Format per resolution: **Resolution / Rationale / Audit gap closed**.
+
+### §G.1 — Q§10.1 — Pro-rated first/last month
+
+**Resolution**: DEFER.
+
+**Rationale**: jurisdictional formulas vary (US states differ in
+required pro-ration math; some operators want it, some explicitly
+don't). Slice 3 matches existing button-triggered behavior
+(full-month charges only). Re-trigger when first partner needs
+partial-month support — that conversation will surface the right
+formula + per-org-or-per-jurisdiction override shape.
+
+**Audit gap closed**: §10.1 explicit deferral capture. The follow-up
+re-trigger is documented for when partner signal warrants.
+
+### §G.2 — Q§10.2 — `rent_charge.generated` notification kind
+
+**Resolution**: DEFER.
+
+**Rationale**: no tenant portal bell UI exists yet (§G.1 of slice 2
+deferred to Tier 3); staff don't want bell noise for routine monthly
+ops; existing button-triggered path has no notification precedent.
+Revisit alongside the tenant portal bell at Tier 3 — both producer
+and UI land together.
+
+**Audit gap closed**: §5.1 + §10.2. No new producer in slice 3.
+`notifications.kind` CHECK constraint stays at slice 2's 6 values.
+
+### §G.3 — Q§10.3 — Tenant email on charge creation
+
+**Resolution**: DEFER.
+
+**Rationale**: statement-ready emails (γ) is a separate Tier 1
+candidate slice with its own cadence (monthly summary) and recipient
+logic (one per tenant per period). Slice 3 stays focused on
+cron-triggered domain logic. Existing button has no email
+precedent.
+
+**Audit gap closed**: §5.2 + §10.3. Slice 3 ships zero email side
+effects.
+
+### §G.4 — Q§10.4 — Per-lease `due_day` customization
+
+**Resolution**: DEFER.
+
+**Rationale**: `leases.monthly_rent` + universal "1st of month"
+default covers the current partner base. Adding `leases.due_day`
+would require a migration + leasing UI updates + careful FK/policy
+audit. Premature given no partner has requested it.
+
+**Audit gap closed**: §10.4. Slice 3 ships single `config.due_day`
+on the automation row (default 1). Per-lease customization waits.
+
+### §G.5 — Q§10.5 — UNIQUE constraint on `(lease_id, period_start, period_end, charge_type)`
+
+**Resolution**: DEFER.
+
+**Rationale**: risk of failed migration on existing populated
+`rent_charges` data outweighs marginal hardening benefit. The
+application-layer idempotency check + slice 1's
+`automation_runs (automation_id, idempotency_key)` UNIQUE cover the
+loop-prevention case.
+
+**New follow-up captured**: add the UNIQUE constraint as part of
+Production Deployment Gate work. Fresh partner-specific databases
+won't have legacy duplicates, so the constraint applies cleanly to
+new orgs from day one. This couples §10.5 to the Q3 gate-crossing
+event documented in PHASE_7_DECISIONS_2026-05-26.md.
+
+**Audit gap closed**: §10.5. Trigger documented for the eventual
+Gate cross.
+
+### §G.6 — Q§10.6 — Opt-in default for financial cron handlers
+
+**Resolution**: PROMOTE to PHASE_7_PLAN.md §0.4 discipline #9.
+
+**The discipline** (binding for all Phase 7+ cron handlers):
+
+> Financial-side-effect or otherwise-risky automation handlers
+> default to opt-in. New orgs provisioning the substrate get NO
+> auto-enabled cron rows. Partners explicitly enable each automation
+> per-org (via the `/automations` settings UI in a future slice, or
+> direct DB insert today). Vendor doc expiry (slice 1) and rent
+> charge generation (slice 3) establish this precedent. Future
+> financial automations (late fees, statement emails, billing)
+> inherit. Non-financial low-risk automations may default opt-out at
+> slice-author discretion with explicit rationale captured in the
+> slice audit.
+
+**Rationale**: financial side effects + reputation cost of an
+unexpected charge generation event justifies the friction of
+explicit opt-in. Slice 1 + slice 3 already practice this pattern;
+promoting to discipline locks it for all future handlers without
+per-slice re-litigation.
+
+**Audit gap closed**: §10.6. Captured in `PHASE_7_PLAN.md` §0.4 as
+discipline #9 AND in `docs/PHASE_7_DECISIONS_2026-05-26.md` as a
+new Q21 locked decision.
+
+### §G.7 — Q§10.7 — Auto-seed disabled `automations` row on new-org provisioning
+
+**Resolution**: DEFER to the `/automations` admin page slice.
+
+**Rationale**: this is the right scope question for THAT slice
+(which ships the per-org enable UX), not slice 3. Slice 3 ships
+zero new-org seed logic. The `/automations` page slice audit will
+revisit "should new orgs see a list of pre-staged-disabled
+automations they can click to enable" as part of its UX design.
+
+**Audit gap closed**: §10.7. Surfaces in the future `/automations`
+page slice audit, not slice 3.
+
+### §G.8 — Q§10.8 — Mid-loop crash stuck `'running'` rows
+
+**Resolution**: DEFER. Match slice 1's deferral (slice 1 §10.6).
+
+**Rationale**: same edge case, same answer. Risk is low; Vercel
+function lifecycle is short; the runner's failure modes mostly
+leave rows in `'failed'` not `'running'`. Re-evaluate if production
+telemetry shows stuck rows accumulating.
+
+**Audit gap closed**: §10.8. Aligned with slice 1's posture across
+slices.
+
+### §G.9 — Slice 3 status: ready for implementation
+
+All 8 §10 questions resolved. Audit is fully locked. Slice 3
+implementation may begin against this audit + these §G resolutions.
+
+**Next step**: slice 3 implementation (a separate session). The
+implementation must:
+- Honor §G.5 deferral (no UNIQUE constraint migration)
+- Honor §G.6 opt-in (no auto-enabled row in any provisioning code)
+- Honor §G.1 / §G.2 / §G.3 (no pro-ration, no new notification, no
+  new email)
+- Honor §G.4 (no per-lease due_day; universal `config.due_day`)
+- §10.5 deferred-but-tied-to-Production-Gate captured for the
+  eventual gate-crossing work
+- §G.6 promoted to discipline #9 in PHASE_7_PLAN.md §0.4 (separate
+  commit covers the plan + decisions doc edits)
+
+The 5 audit leans from the original §10 that were locked vs deferred:
+- §10.5 UNIQUE constraint — DEFERRED with new Production-Gate
+  re-trigger
+- §10.6 opt-in default — PROMOTED to discipline
+- §10.1 / §10.2 / §10.3 / §10.4 / §10.7 / §10.8 — all DEFERRED with
+  documented re-triggers
+
+All other audit content stands.
+
+**STATUS: ready for implementation.**
