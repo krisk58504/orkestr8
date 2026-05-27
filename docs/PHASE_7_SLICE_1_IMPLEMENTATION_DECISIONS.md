@@ -448,3 +448,149 @@ writes a safety-gating column — MUST include this requirement
 explicitly. The freeze toggle precedent established by §6.4 should
 be re-read as "tighter-than-RLS server-action authorization **with
 read-after-write verification**."
+
+### F.2 — Pre-existing Phase 6 `is_ai_actor()` helper bug surfaced by Phase 7 RLS regression
+
+**Discovered**: 2026-05-26, ship-gate RLS regression run.
+
+**Symptom**: `rls_phase7_automations.sql` (Suite 19) fails
+intermittently with SQLSTATE 22P02 — "invalid input syntax for type
+boolean: ''". 0 of 10 assertions complete. Suite 16
+(`rls_phase6_ai_restrictive.sql`) has the same intermittent failure
+when probed against a polluted pool.
+
+**Root cause**: latent bug in the helper authored during Phase 6
+slice 11a (`supabase/migrations/20260604000100_phase6_ai_foundation.sql`
+lines 40-48):
+
+```sql
+-- BEFORE (bug):
+select coalesce(current_setting('app.is_ai_actor', true)::boolean, false);
+```
+
+When the GUC carries value `''` (empty string), `''::boolean` raises
+22P02 **before** `coalesce` can supply a default. Empty string is
+the residual state Postgres leaves on a custom (`app.*`) GUC after a
+transaction-local `set_config('app.is_ai_actor', ..., true)` rolls
+back through a pgbouncer Session-pooled backend session. The original
+Phase 6 RLS regression run on 2026-05-25 (logged in RLS_TEST_PLAN.md
+§6 as 18/18 passing) was a lucky-pool run — the backend happened to
+be clean. Subsequent runs against polluted backends would have failed
+in exactly the same way Suite 19 did.
+
+**Resolution**: one-line `nullif(_, '')` wrap in the helper, shipped
+as `supabase/migrations/20260610000000_fix_is_ai_actor_empty_string.sql`:
+
+```sql
+-- AFTER (fix):
+select coalesce(
+  nullif(current_setting('app.is_ai_actor', true), '')::boolean,
+  false
+);
+```
+
+Empty string maps to NULL, which COALESCEs to false. Behavior for
+the `'true'` / `'false'` cases is unchanged.
+
+**Determinism verified**: after the migration applied, two back-to-back
+full RLS regression runs produced **20 / 20 suites pass — 286 / 286
+cumulative assertions** each time. Between runs, a probe confirmed
+`app.is_ai_actor=''` was still present on the pool — i.e. the suites
+pass on the polluted pool, not by luck.
+
+**Pattern note for future work**: any helper that reads a custom
+(`app.*`) GUC and casts to a typed value MUST `nullif` the
+empty-string case. pgbouncer Session pooling makes the polluted-pool
+state common enough that the bug WILL be exposed eventually. The
+discipline is now codified here; future custom-GUC helpers must
+follow this pattern.
+
+**Audit gap**: Phase 6 slice 11a's audit and SECURITY_REVIEW.md §14
+both included `is_ai_actor()` as a reviewer-attention paragraph but
+did not flag pgbouncer-residual-state as a failure mode. Phase 6's
+slice 11a RLS suite (Suite 16) passed on the run that landed in the
+audit log, so the bug stayed latent. Future helper-function audits
+should include "verify behavior on residual GUC states (`NULL`,
+`''`, malformed values)" as an explicit check.
+
+---
+
+## Part G — Slice 1 official sign-off
+
+### G.1 — Walk-test scenarios
+
+All 7 walk-test scenarios from `docs/PHASE_7_SLICE_1_AUDIT.md` §8.3
+passed.
+
+| # | Scenario | Result |
+|---|---|---|
+| 1 | Cold first run — 3 emails for documents at +30 / +14 / +7 days | PASS |
+| 2 | Same-day idempotency — re-invoke produces 0 new emails | PASS |
+| 3 | Recipient resolution chain — primary contact → vendor.email → skip | PASS |
+| 4 | Org freeze — flip via UI, cron skips with reason `org_frozen` | PASS (after the page/action session-cache fix in §F.1) |
+| 5 | Authorization walk — PM succeeds, TENANT 403, cross-org isolated | PASS |
+| 6 | Cumulative RLS regression — Suites 1-20 green | **PASS — 20/20, 286/286 (after §F.2 fix)** |
+| 7 | Vercel Preview walk — middleware doesn't intercept /api/cron | PASS (after the middleware PUBLIC_PREFIXES fix in §E.1) |
+
+### G.2 — Defects discovered + fixed during walk-test
+
+Three slice-1-blocking defects surfaced during walk-test, all caught
+before official ship:
+
+1. **§E.1** — middleware redirecting `/api/cron/*` to `/login`. Fixed
+   by adding `/api/cron` to `PUBLIC_PREFIXES`.
+2. **§F.1** — UI/DB divergence on freeze toggle: page rendered from
+   session-cache, action compared `previous` against session-cache.
+   Fixed by reading fresh from DB + verifying via
+   `update(...).select(...).single()`.
+3. **§F.2** — pre-existing Phase 6 helper bug exposed by Phase 7 RLS
+   regression. Fixed by `nullif(_, '')` wrap in `is_ai_actor()`.
+
+§F.2 was a **pre-existing bug**, not a slice-1-introduced regression.
+Surfacing it here was a side-effect of slice 1 introducing a third
+table (`automations`) with the same RESTRICTIVE policy shape that
+`rent_charges` and `payments` carry — Suite 19's privileged fixture
+INSERTs hit the helper more deterministically than Suite 16's path
+does, increasing the visibility of the latent issue.
+
+### G.3 — Ship-gate posture
+
+- [x] All 7 walk-test scenarios green
+- [x] RLS regression 20 / 20, 286 / 286 cumulative
+- [x] `tsc --noEmit` clean
+- [x] `npm run build` clean
+- [x] Slice-1-scope lint clean
+- [x] No new lint regressions introduced
+- [x] All §10 questions resolved or explicitly PENDING with trigger
+- [x] Three walk-test defects fixed and re-verified
+- [x] Decisions document complete (§A-§G)
+
+**Slice 1 ships officially as of 2026-05-26.**
+
+### G.4 — Open follow-ups (not blocking ship)
+
+Captured for non-slice-1 work:
+
+- `PHASE_7_PLAN.md` §1.4 column-name correction
+  (`expires_at` → `expires_on`) — §A.1
+- `PRODUCTION_CHECKLIST.md` paragraph on `CRON_SECRET` operator
+  rotation — §A.7
+- `/automations` list + detail page (Q6 deferred — next Phase 7 slice)
+- "Retry failed automation runs" admin action (§A.5)
+- Mid-loop runner crash sweep job, if production telemetry warrants
+  (§A.6)
+- Helper-roles SUPER_ADMIN ratification sweep (§A.3)
+
+### G.5 — Phase 7 status after slice 1
+
+Per `PHASE_7_PLAN.md` §0.5 + §1:
+
+- **Substrate**: ✓ shipped (`automations`, `automation_runs`,
+  `automation_logs.automation_id` FK, three-gate chain,
+  handler registry, Vercel Cron entrypoint, off-switch)
+- **First handler**: ✓ shipped (`vendor_doc_expiry`)
+- **Slice 2** (notifications wiring per Q15): ready to audit
+- **Slice 3** (financial — α or γ per Q20): ready to audit after
+  slice 2
+
+The Phase 7 runway is clean. Next slice begins on a green base.
