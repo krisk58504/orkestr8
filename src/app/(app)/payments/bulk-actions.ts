@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/guards";
 import { canWriteTenants } from "@/lib/auth/roles";
+// Phase 7 slice 3 — periodForMonth moved to the shared automation library
+// so the cron-triggered rent_charge_generation handler and this
+// button-triggered action use bit-identical period computation.
+import { periodForMonth } from "@/lib/automation/lib/periods";
 import { logAudit } from "@/lib/data/audit";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,28 +20,6 @@ export type GenerateChargesResult =
   | { ok: false; error: string };
 
 const NO_PERMISSION = "You don't have permission to manage rent charges.";
-
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-function periodForMonth(year: number, month: number): {
-  period_start: string;
-  period_end: string;
-  due_date: string;
-  description: string;
-} {
-  const first = new Date(Date.UTC(year, month - 1, 1));
-  const last = new Date(Date.UTC(year, month, 0));
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  return {
-    period_start: iso(first),
-    period_end: iso(last),
-    due_date: iso(first),
-    description: `${MONTH_NAMES[month - 1]} ${year} rent`,
-  };
-}
 
 /**
  * Bulk-generate rent charges for a property's active+upcoming leases for a
