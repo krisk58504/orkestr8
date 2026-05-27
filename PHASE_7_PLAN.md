@@ -107,6 +107,19 @@ These bind on every Phase 7 slice without re-litigation:
    "While I'm in this file anyway" is OK; "small extra feature" is
    not. Scope additions beyond ~25 files are split to their own slice.
 
+9. **Financial / risky cron handlers default to opt-in** (slice 3
+   audit-walk 2026-05-27 — §G.6 / Q21). New orgs provisioning the
+   substrate get NO auto-enabled cron rows. Partners explicitly
+   enable each automation per-org (via the future `/automations`
+   settings UI, or via direct DB insert today). Vendor doc expiry
+   (slice 1) and rent charge generation (slice 3) establish this
+   precedent. Future financial automations (late fees, statement
+   emails, billing) inherit. Non-financial low-risk automations MAY
+   default opt-out at slice-author discretion with explicit rationale
+   captured in the slice audit. Full lock + rationale in
+   [docs/PHASE_7_DECISIONS_2026-05-26.md](docs/PHASE_7_DECISIONS_2026-05-26.md)
+   Q21.
+
 ### 0.5 LOCKED decisions
 
 Seventeen decisions locked during the 2026-05-26 audit-walk. Full

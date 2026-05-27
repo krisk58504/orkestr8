@@ -7,7 +7,11 @@ source-of-truth input for PHASE_7_PLAN.md.
 Method: live audit-walk with Claude. Each question received an explicit
 lock (with rationale) or explicit PENDING (with trigger for re-decision).
 
-**Totals**: 17 LOCKED + 3 PENDING = 20 audit questions resolved.
+**Totals**: 18 LOCKED + 3 PENDING = 21 audit questions resolved.
+
+**Update log**:
+- 2026-05-26 — original audit-walk: 17 LOCKED (Q1-6, Q8-11, Q13, Q15-Q20) + 3 PENDING (Q7, Q12, Q14)
+- 2026-05-27 — slice 3 audit-walk: Q21 added (financial cron handler opt-in default; promoted from slice 3 audit §G.6 to PHASE_7_PLAN.md §0.4 discipline #9)
 
 ---
 
@@ -331,6 +335,39 @@ sequencing) + §10.4 in PHASE_7_AUDIT_DRAFT.md.
 - Lifecycle communications + AI-decided slices follow per Q18 tier
   ordering
 
+### Q21 — Financial cron handler opt-in default (slice 3 institutional lock)
+**Decision:** Financial-side-effect or otherwise-risky automation
+handlers default to opt-in. New orgs provisioning the substrate get
+NO auto-enabled cron rows. Partners explicitly enable each automation
+per-org (via the future `/automations` settings UI, or via direct DB
+insert today).
+**Rationale:** Financial side effects + reputation cost of an
+unexpected charge generation event justifies the friction of explicit
+opt-in. Slice 1 (vendor doc expiry — low-blast-radius email-only) and
+slice 3 (rent charge generation — financial table writes) already
+practice this pattern in their respective audits; promoting to a
+discipline locks it for all future handlers without per-slice
+re-litigation. Non-financial low-risk automations MAY default opt-out
+at slice-author discretion with explicit rationale captured in the
+slice audit.
+**Audit reference:** docs/PHASE_7_SLICE_3_AUDIT.md §G.6 (promotion
+trigger) + §10.6 (original audit question); PHASE_7_PLAN.md §0.4
+discipline #9 (institutional lock).
+**Plan implications:**
+- New cron handlers writing to financial tables (`rent_charges`,
+  `payments`, `vendor_invoices`, future billing) MUST default to
+  opt-in — no auto-enable in any provisioning code path
+- Non-financial low-risk handlers (e.g., reminder emails, internal
+  notifications) MAY default opt-out, but the slice audit MUST
+  capture the rationale explicitly — silent opt-out is not the
+  default
+- Future `/automations` page slice (Q6 deferred) ships per-org
+  enable/disable UX; new-org seed of pre-staged-disabled
+  automation rows is a separate decision deferred to that slice's
+  audit (slice 3 §G.7)
+- The discipline binds for Phase 7+; Phase 8 may revisit if partner
+  signal indicates the friction is excessive
+
 ---
 
 ## PENDING Decisions (3)
@@ -376,5 +413,6 @@ PHASE_7_AUDIT_DRAFT.md; AI_AUTOMATION_SAFETY.md §9 (current stub).
 
 ---
 
-**Decisions doc status**: COMPLETE. 17 LOCKED + 3 PENDING. Source of
-truth for PHASE_7_PLAN.md authoring (next artifact).
+**Decisions doc status**: COMPLETE. 18 LOCKED + 3 PENDING. Source of
+truth for PHASE_7_PLAN.md authoring (next artifact). Q21 added
+2026-05-27 per slice 3 audit §G.6 promotion to §0.4 discipline #9.
