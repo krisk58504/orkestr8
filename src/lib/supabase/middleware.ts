@@ -8,10 +8,23 @@ import { NextResponse, type NextRequest } from "next/server";
 import { perfEnd, perfStart } from "@/lib/perf";
 import type { Database } from "@/lib/types/database";
 
-// Marketing / pre-auth public surface. Add new public routes (e.g. /contact,
-// /about, /terms) to this list — anything not listed redirects unauthenticated
-// users to /login.
-const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/error", "/invite", "/pricing"];
+// Marketing / pre-auth public surface + system endpoints that authenticate
+// via their own mechanism (e.g. cron endpoints verifying CRON_SECRET in the
+// Authorization header). Anything not listed redirects unauthenticated users
+// to /login — which is correct for app routes but wrong for endpoints that
+// (a) have no human user, and (b) authenticate via a non-Supabase mechanism.
+//
+// Add new public routes (e.g. /contact, /about, /terms) AND new system-auth
+// endpoints (e.g. /api/cron/*, /api/webhooks/*) to this list.
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/signup",
+  "/auth",
+  "/error",
+  "/invite",
+  "/pricing",
+  "/api/cron",
+];
 
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/") return true;

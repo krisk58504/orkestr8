@@ -322,3 +322,54 @@ Commit boundaries:
 4. **Tests** (commit 4) — RLS suites + RLS_TEST_PLAN.md
 
 **STATUS**: ready for implementation. Decisions binding for slice 1.
+
+---
+
+## Part E — Walk-test discoveries (post-implementation)
+
+Captured after slice 1 hit Vercel Preview. These are gaps the audit
+did not surface; documenting them so future cron / webhook /
+system-auth endpoint slices encounter them at audit time, not at
+walk-test time.
+
+### E.1 — Middleware PUBLIC_PREFIXES must include `/api/cron`
+
+**Discovered**: 2026-05-26, walk-test scenario 1 (cold first run).
+`curl -H "Authorization: Bearer ${CRON_SECRET}" $PREVIEW_URL/api/cron/automations`
+returned an HTML redirect to `/login` instead of the runner's JSON
+summary.
+
+**Root cause**: `src/lib/supabase/middleware.ts` runs Supabase auth
+revalidation on every request and redirects unauthenticated requests
+to `/login` unless the path matches a `PUBLIC_PREFIXES` entry. The
+cron endpoint authenticates via the `Authorization: Bearer
+${CRON_SECRET}` header — Vercel Cron has no Supabase session — so
+the middleware's blanket redirect intercepts the request before the
+endpoint's own auth gate runs.
+
+**Pattern for future system-auth endpoints**: any HTTP entrypoint
+that authenticates via a non-Supabase mechanism (cron secrets,
+webhook signatures, service-to-service API keys) MUST be added to
+`PUBLIC_PREFIXES`. The endpoint's own auth check (e.g.,
+`CRON_SECRET` verification at `route.ts:11`) is the authoritative
+gate; the middleware's job is only to not double-gate against a
+non-existent Supabase session.
+
+**Audit gap**: docs/PHASE_7_SLICE_1_AUDIT.md §4.1-4.2 covered the
+`CRON_SECRET` header verification but did not check the middleware
+chain. The audit's walk-test rubric §8.3 scenario 1 said "Invoke
+`GET /api/cron/automations` with valid Authorization header" — it
+implicitly assumed the request would reach the endpoint, which the
+middleware prevented. Future cron / webhook slice audits MUST
+include a "verify middleware does not intercept" line in §4 or §6.
+
+**Resolution**: added `/api/cron` to `PUBLIC_PREFIXES` in
+`src/lib/supabase/middleware.ts`. The block comment above the array
+was extended to call out the system-auth-endpoint case explicitly so
+future contributors don't re-discover this pattern at walk-test
+time.
+
+**Post-resolution verification**: re-curl the endpoint after deploy
+and confirm it returns the runner's JSON summary
+(`{ duration_ms, automations_seen, attempted, succeeded, skipped,
+failed, org_gated }`) instead of an HTML redirect.
