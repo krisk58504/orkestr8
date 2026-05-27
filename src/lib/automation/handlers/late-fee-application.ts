@@ -110,7 +110,9 @@ async function run(
   const idempotencyKey = `late_fee_application:${today}`;
 
   // Outer idempotency — one run per (automation, UTC date).
-  const { data: run, error: runInsertError } = await admin
+  // Renamed `data: run` → `data: automationRun` to avoid shadowing
+  // the outer `run` function declared in this file.
+  const { data: automationRun, error: runInsertError } = await admin
     .from("automation_runs")
     .insert({
       organization_id: params.organizationId,
@@ -120,7 +122,7 @@ async function run(
     })
     .select("id")
     .single();
-  if (runInsertError || !run) {
+  if (runInsertError || !automationRun) {
     // UNIQUE collision — already ran today.
     return { attempted: 0, succeeded: 0, skipped: 1, failed: 0 };
   }
@@ -152,7 +154,7 @@ async function run(
         error_message: candidatesError.message,
         result: { stage: "candidates_query" } as never,
       })
-      .eq("id", run.id);
+      .eq("id", automationRun.id);
     return { attempted: 0, succeeded: 0, skipped: 0, failed: 1 };
   }
   const candidateList: EligibleRow[] = candidates ?? [];
@@ -172,7 +174,7 @@ async function run(
           total_amount_due: 0,
         } as never,
       })
-      .eq("id", run.id);
+      .eq("id", automationRun.id);
     return { attempted: 0, succeeded: 0, skipped: 0, failed: 0 };
   }
 
@@ -196,7 +198,7 @@ async function run(
           candidates: candidateList.length,
         } as never,
       })
-      .eq("id", run.id);
+      .eq("id", automationRun.id);
     return { attempted: 0, succeeded: 0, skipped: 0, failed: 1 };
   }
   const feedParentIds = new Set(
@@ -225,7 +227,7 @@ async function run(
           total_amount_due: 0,
         } as never,
       })
-      .eq("id", run.id);
+      .eq("id", automationRun.id);
     return {
       attempted: 0,
       succeeded: 0,
@@ -272,7 +274,7 @@ async function run(
           already_feed: alreadyFeedCount,
         } as never,
       })
-      .eq("id", run.id);
+      .eq("id", automationRun.id);
     return {
       attempted: eligible.length,
       succeeded: 0,
@@ -299,7 +301,7 @@ async function run(
         total_amount_due: totalAmount,
       } as never,
     })
-    .eq("id", run.id);
+    .eq("id", automationRun.id);
 
   return {
     attempted: eligible.length,
