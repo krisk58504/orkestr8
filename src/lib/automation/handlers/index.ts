@@ -1,5 +1,6 @@
 import "server-only";
 import type { AutomationHandler } from "@/lib/automation/types";
+import { lateFeeApplicationHandler } from "./late-fee-application";
 import { rentChargeGenerationHandler } from "./rent-charge-generation";
 import { vendorDocExpiryHandler } from "./vendor-doc-expiry";
 
@@ -12,6 +13,7 @@ import { vendorDocExpiryHandler } from "./vendor-doc-expiry";
 const HANDLERS: Record<string, AutomationHandler> = {
   [vendorDocExpiryHandler.type]: vendorDocExpiryHandler,
   [rentChargeGenerationHandler.type]: rentChargeGenerationHandler,
+  [lateFeeApplicationHandler.type]: lateFeeApplicationHandler,
 };
 
 export function getHandler(type: string): AutomationHandler | null {

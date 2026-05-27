@@ -1026,6 +1026,9 @@ export type Database = {
           voided_at: string | null;
           voided_by: string | null;
           void_reason: string | null;
+          /** Phase 7 slice 4 — self-FK to rent_charges(id); non-null on
+           *  'fee'-type rows the late-fee handler creates. ON DELETE SET NULL. */
+          parent_charge_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1046,6 +1049,7 @@ export type Database = {
           voided_at?: string | null;
           voided_by?: string | null;
           void_reason?: string | null;
+          parent_charge_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
