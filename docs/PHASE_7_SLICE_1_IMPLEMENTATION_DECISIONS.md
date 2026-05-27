@@ -373,3 +373,78 @@ time.
 and confirm it returns the runner's JSON summary
 (`{ duration_ms, automations_seen, attempted, succeeded, skipped,
 failed, org_gated }`) instead of an HTML redirect.
+
+---
+
+## Part F — Walk-test discoveries (continued)
+
+### F.1 — Freeze toggle persisted to DB but page/action both read from session cache
+
+**Discovered**: 2026-05-26, walk-test scenario 4 (off-switch flow).
+
+**Symptom**: UI shows "Frozen" status after a successful flip, but
+direct DB query against `organizations.automation_freeze` returns
+`false`. The cron runner correctly executes against DB state (not UI
+state), so emails fire **despite** the UI's freeze indicator —
+exactly the dangerous failure mode the freeze toggle exists to
+prevent.
+
+**Root cause**: two reads of `automation_freeze` came from the
+session cache rather than the database:
+
+- `src/app/(app)/settings/automations/page.tsx` line 39 (pre-fix):
+  `const org = context.organization;` → page rendered freeze state
+  from the React-cached `getSessionContext()` snapshot, which is
+  stale immediately after a flip
+- `src/app/(app)/settings/automations/actions.ts` line 43 (pre-fix):
+  `const previous = guard.context.organization.automation_freeze ?? false;`
+  → action's "already-in-target-state" short-circuit compared the
+  caller's requested state against the **stale** previous, sometimes
+  no-op'ing a real change
+
+The session cache is a per-request cache; the organization
+snapshot it carries is whatever was current when `getSessionContext()`
+first ran during the request. For pages following a server-action
+mutation, that snapshot can be N+0 milliseconds out of date — close
+enough that the user perceives "the page didn't update" but with
+correct DB persistence underneath. For pages following another
+client's mutation (e.g., a different staff session), the snapshot is
+arbitrarily stale.
+
+**Resolution**:
+
+- `page.tsx`: read freeze state directly from `organizations` via
+  the admin client immediately before rendering; pass the fresh row's
+  fields to `<AutomationFreezeSection />`. Session cache is still
+  used for `context.organization.id` (the org identity) and
+  `context.roles` (the role check) — those are static for the
+  request.
+- `actions.ts`: read fresh `previous` via admin client query; write
+  through `update(...).select(...).single()` and verify the returned
+  row's `automation_freeze` matches the requested state. If
+  divergent, return an error explicitly rather than reporting
+  success.
+
+**Pattern note for future slices**: **session-cached organization
+state is NOT safe for security-critical writes**. Any column where
+read-after-write consistency matters — freeze flags, mode toggles,
+`ai_mode`, anything gating runtime behavior — MUST:
+
+1. Read fresh from the DB before deciding whether to write
+2. Use `update(...).select(...).single()` to verify the write persisted
+3. Reject success reporting on row-count-zero or value-mismatch
+
+The session cache is fine for identity (`organizationId`, `userId`,
+`roles`) and for display-only org metadata (`name`, `slug`,
+`billing_email`). It is NOT fine for the columns the platform's
+safety gates depend on.
+
+**Audit gap**: `docs/PHASE_7_SLICE_1_AUDIT.md` §5.3 and §6.4
+specified the server-action authorization pattern (admin client +
+TypeScript role check + audit log) but did not specify "read state
+from DB not session cache" as part of the pattern. Future audits for
+any settings-page-with-toggle slice — and any audit for a slice that
+writes a safety-gating column — MUST include this requirement
+explicitly. The freeze toggle precedent established by §6.4 should
+be re-read as "tighter-than-RLS server-action authorization **with
+read-after-write verification**."

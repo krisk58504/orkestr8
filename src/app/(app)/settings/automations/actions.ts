@@ -40,21 +40,43 @@ export async function setAutomationFreeze(
   }
 
   const orgId = guard.context.organization.id;
-  const previous = guard.context.organization.automation_freeze ?? false;
+  const admin = createAdminClient();
+
+  // Fresh read of current state — do NOT trust the session cache.
+  // The session's organization snapshot can be stale on the request
+  // immediately following a flip (walk-test §F.1 discovery).
+  const { data: current, error: readError } = await admin
+    .from("organizations")
+    .select("automation_freeze")
+    .eq("id", orgId)
+    .single();
+  if (readError) return { ok: false, error: readError.message };
+  const previous = current?.automation_freeze ?? false;
   if (previous === frozen) {
     return { ok: true, frozen };
   }
 
-  const admin = createAdminClient();
-  const { error } = await admin
+  // Write + verify by reading the row back via .select().single().
+  // Belt-and-suspenders: if the UPDATE silently matched zero rows
+  // (RLS misconfig, stale FK, anything), this catches it before we
+  // tell the caller everything succeeded.
+  const { data: updated, error: updateError } = await admin
     .from("organizations")
     .update({
       automation_freeze: frozen,
       automation_freeze_at: frozen ? new Date().toISOString() : null,
       automation_freeze_by: frozen ? guard.context.authUserId : null,
     })
-    .eq("id", orgId);
-  if (error) return { ok: false, error: error.message };
+    .eq("id", orgId)
+    .select("automation_freeze")
+    .single();
+  if (updateError) return { ok: false, error: updateError.message };
+  if (!updated || updated.automation_freeze !== frozen) {
+    return {
+      ok: false,
+      error: "Freeze state did not persist. Please retry.",
+    };
+  }
 
   await logAudit({
     organizationId: orgId,

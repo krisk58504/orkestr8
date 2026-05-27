@@ -36,8 +36,23 @@ export default async function SettingsAutomationsPage() {
   if (!context) return null;
 
   const canEdit = isManager(context.roles);
-  const org = context.organization;
-  const freezeByName = await resolveFreezeByName(org.automation_freeze_by);
+
+  // Fresh DB read — do NOT trust the session cache for freeze state.
+  // getSessionContext() is React-cached for the request; relying on its
+  // organization snapshot causes UI/DB divergence right after a flip
+  // (walk-test §F.1 discovery in PHASE_7_SLICE_1_IMPLEMENTATION_DECISIONS).
+  const admin = createAdminClient();
+  const { data: freshOrg } = await admin
+    .from("organizations")
+    .select(
+      "automation_freeze, automation_freeze_at, automation_freeze_by, automation_mode",
+    )
+    .eq("id", context.organization.id)
+    .single();
+
+  const freezeByName = await resolveFreezeByName(
+    freshOrg?.automation_freeze_by ?? null,
+  );
 
   return (
     <div className="space-y-6">
@@ -67,9 +82,9 @@ export default async function SettingsAutomationsPage() {
         </CardHeader>
         <CardContent>
           <AutomationFreezeSection
-            frozen={org.automation_freeze ?? false}
-            mode={org.automation_mode ?? "enabled"}
-            freezeAt={org.automation_freeze_at ?? null}
+            frozen={freshOrg?.automation_freeze ?? false}
+            mode={freshOrg?.automation_mode ?? "enabled"}
+            freezeAt={freshOrg?.automation_freeze_at ?? null}
             freezeByName={freezeByName}
             canEdit={canEdit}
           />
