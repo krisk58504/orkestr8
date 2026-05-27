@@ -211,3 +211,47 @@ ceiling.
 
 **STATUS**: decisions documented. Slice 2 implementation proceeds
 against this doc + the audit + §G resolutions.
+
+---
+
+## E — Discipline gap discovered during walk-test (2026-05-27)
+
+### E.1 — Implementation prompt was missing "apply the migration"
+
+**Symptom**: walk-test of slice 2 producers failed because the
+notifications table on dev Supabase still had only Phase 1 staging
+columns (`kind` / `metadata` / CHECK / new index all missing).
+Producers attempting to write `kind = 'maintenance.created'` would
+have been blocked by the missing column.
+
+**Root cause**: the slice 2 implementation prompt enumerated the
+four commits (decisions / migration / app code / tests) and the
+quality gates (`tsc`, `build`, `lint`) but did NOT include "run
+`npm run db:migrate`" as an explicit step. The migration file was
+authored, committed (`6c16631`), pushed — and then left unapplied on
+dev. Vercel's deploy success doesn't apply migrations (Vercel only
+builds Next.js); migrations are a separate `db:migrate` run against
+`DATABASE_URL`.
+
+**Resolution**: applied the migration via `npm run db:migrate` after
+walk-test surfaced the symptom. Verified with three SQL probes:
+- 11 columns including `kind` + `metadata`
+- CHECK constraint `notifications_kind_check` on `kind` (6 values)
+- Index `notifications_user_created_idx` on `(user_id, created_at DESC)`
+
+**Follow-up for slice 3+ implementation prompts**: add an explicit
+post-commit step
+
+> 5. After committing the migration: run `npm run db:migrate` to
+>    apply against dev Supabase. Verify the schema delta lands via
+>    `scripts/run-sql.ts` or direct query before declaring slice
+>    implementation complete.
+
+This pattern was implicit during slice 1 (operator-applied between
+commits without explicit prompting), and the discipline lapsed in
+slice 2. Captured here so it doesn't recur.
+
+**Related**: the Phase 7 plan §0.4 disciplines do not currently
+include "apply migrations as part of implementation." Adding this as
+a §0.4 discipline (or as a Phase 7 §10 closure note) would
+institutionalize it for all future Phase 7 slices.
