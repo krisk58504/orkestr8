@@ -869,3 +869,192 @@ proceeds against this audit once §10 questions are confirmed or
 explicitly deferred.
 
 **STATUS: ready for confirmation.**
+
+---
+
+## §G — §10 resolutions (audit-walk 2026-05-27)
+
+Plan-author resolved all 8 §10 open questions in the audit-walk on
+2026-05-27. This section is the permanent record. Slice 2
+implementation may begin against the now-fully-locked audit.
+
+Format per resolution: **Resolution / Rationale / Audit gap closed**.
+
+### §G.1 — Q§10.1 — Tenant portal bell UI timing
+
+**Resolution**: DEFER to Tier 3 (alongside lifecycle communications).
+Slice 2 still writes tenant-recipient notification rows; the
+tenant-portal bell UI ships later.
+
+**Rationale**: founding partners are PM operators per Q4 — primary
+evaluation surface is the staff/operations side. Tenant experience
+polish happens in a dedicated slice when partner signal warrants it.
+Tenant Resend emails (Phase 3 surface) continue to cover the most-
+urgent case (new message) in the meantime.
+
+**Audit gap closed**: §10.1 question fully resolved. The
+"unread-rows-in-DB-with-no-UI" intermediate state is accepted as a
+short-term cost. Slice 2 still produces tenant-recipient rows so the
+data is captured for the future portal bell — no retroactive backfill
+needed when the portal bell slice lands.
+
+### §G.2 — Q§10.2 — `kind` CHECK constraint
+
+**Resolution**: YES, add a CHECK constraint listing slice 2's 5
+kinds. Each future producer-adding slice extends the constraint via
+migration.
+
+**Rationale**: catches typos in `kind` strings at INSERT time rather
+than at dropdown render time. Strong DB-level enforcement is worth
+the per-slice migration coordination cost.
+
+**Audit gap closed**: §2.2 lean (free text) is OVERRIDDEN by this
+resolution. Slice 2 migration ships with:
+
+```sql
+alter table public.notifications
+  add constraint notifications_kind_check check (
+    kind in (
+      'info',                  -- legacy default; pre-slice-2 rows
+      'maintenance.created',
+      'work_order.assigned',
+      'message.received',
+      'application.submitted',
+      'automation_run.failed'
+    )
+  );
+```
+
+The `'info'` value remains valid for the column default (preserves
+the default semantics from Phase 1 staging). Future slices that
+introduce new kinds run `ALTER TABLE ... DROP CONSTRAINT ... ADD
+CONSTRAINT ...` with the expanded list.
+
+### §G.3 — Q§10.3 — Zero-recipient producer skip destination
+
+**Resolution**: log to `audit_logs` with `action='notification.skipped'`
++ `metadata={ kind, reason: 'no_recipients' }`.
+
+**Rationale**: matches existing `logAudit` precedent; gives ops
+visibility without a new logging surface. The audit_logs table
+already has the right org-scoped manager-only RLS posture.
+
+**Audit gap closed**: §3.4 edge-case row "Recipient resolver returns
+empty array" is fully specified. `produceNotification` calls
+`logAudit({ action: 'notification.skipped', ... })` when its
+recipient resolver upstream returned empty. The skip is queryable
+via standard audit_logs filters.
+
+### §G.4 — Q§10.4 — N-rows vs `notification_reads` join table
+
+**Resolution**: CONFIRM N-rows (one notification row per recipient).
+NO join table introduced in slice 2.
+
+**Rationale**: simpler, no JOIN at dropdown render, multi-recipient
+broadcasts are uncommon enough that storage cost is negligible.
+Revisit if notification volume per org exceeds ~10k rows/month per
+recipient.
+
+**Audit gap closed**: §2.4 (what is NOT changed) + §10.4 (the
+question) jointly locked. No `notification_reads` table in slice 2
+or any future slice unless the volume trigger fires.
+
+### §G.5 — Q§10.5 — Producer skip-log destination
+
+**Resolution**: same as §G.3 — `audit_logs` with
+`action='notification.skipped'` and consistent action naming across
+all producer-skip paths.
+
+**Rationale**: single audit surface; ops can grep one table for all
+producer-skip events regardless of whether the skip was
+"no_recipients" or "recipient_resolver_failed" or any future skip
+reason.
+
+**Audit gap closed**: producer-skip log destination is consistently
+`audit_logs` with `action='notification.skipped'`. The `metadata`
+jsonb distinguishes the reason. Resolves §10.5 alongside §10.3.
+
+### §G.6 — Q§10.6 — Notification preferences
+
+**Resolution**: DEFER to a future polish slice.
+
+**Rationale**: slice 2 ships 5 universal producers. Preferences
+become valuable when there are 15+ event kinds and notification
+volume justifies opt-out controls. Premature today.
+
+**Audit gap closed**: §5.4 "what slice 2 does NOT ship" + §11.3
+follow-ups jointly capture this. No `notification_preferences` table
+or `users.notification_*` columns in slice 2.
+
+### §G.7 — Q§10.7 — Stale links (entity deleted after notification)
+
+**Resolution**: ship slice 2 with naive `link` values; rely on
+existing `/not-found` and `/error` pages to handle gracefully when a
+click resolves to a 404 or RLS-denied response.
+
+**Rationale**: the cascade-on-org-delete from Phase 1 covers the
+most-common deletion case (org cleanup). Per-entity deletion is rare.
+Building a stale-link sweep job is over-engineering for early scale.
+
+**Follow-up captured**: §11.3 follow-ups list now includes "consider
+notification archival / stale-link sweep" as a future polish slice
+when production data shows the issue is real.
+
+### §G.8 — Q§10.8 — Actor-self-skip location
+
+**Resolution**: implement actor-self-skip INSIDE the
+`produceNotification` helper itself, NOT at each call site.
+
+**Rationale**: single source of truth; new producers automatically
+inherit the behavior; reduces per-call-site cognitive load. The
+existing producer-call shape (§3.3) already loops over recipients;
+the helper can accept an `actorUserId` parameter and skip when
+`userId === actorUserId`.
+
+**Audit gap closed**: §3.1 producer helper signature is REVISED:
+
+```typescript
+export type ProduceNotificationParams = {
+  organizationId: string;
+  userId: string;          // recipient
+  actorUserId?: string;    // NEW — skip if recipient is the actor
+  kind: string;
+  title: string;
+  body?: string;
+  type?: "info" | "success" | "warning" | "error";
+  link?: string;
+  metadata?: Json;
+};
+```
+
+Producer body adds:
+```typescript
+if (params.actorUserId && params.userId === params.actorUserId) {
+  return; // actor-self-skip; no insert, no log
+}
+```
+
+§3.4 edge-case "Recipient user is the actor themselves" — caller MUST
+pass `actorUserId`; helper handles the filter. This overrides the
+audit's §3.4 row 2 lean (which said "caller filters") in favor of
+the simpler helper-side filter per the resolution.
+
+### §G.9 — Slice 2 status: ready for implementation
+
+All 8 §10 questions resolved. Audit is fully locked. Slice 2
+implementation may begin against this audit + these §G resolutions
+per the audit-decide-plan-slice discipline.
+
+**Next step**: slice 2 implementation (a separate session). The
+implementation must:
+- Honor §G.2 (CHECK constraint in migration)
+- Honor §G.8 (actor-self-skip in `produceNotification` helper)
+- Use `audit_logs` for skip-logging per §G.3 / §G.5
+- Write tenant-recipient rows per §G.1 (even though no portal bell UI ships)
+- Skip preferences / join table / stale-link sweep per §G.4 / §G.6 / §G.7
+
+The §10 lean values from the original audit that were OVERRIDDEN by
+plan-author resolution: §2.2 (CHECK), §3.4 row 2 (actor-skip
+location). All other audit content stands.
+
+**STATUS: ready for implementation.**
