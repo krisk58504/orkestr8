@@ -1026,3 +1026,17 @@ The 5 audit leans from the original §10 that were locked vs deferred:
 All other audit content stands.
 
 **STATUS: ready for implementation.**
+
+### §G.10 — Errata: commit e24f54b discipline number
+
+Commit `e24f54b` subject line says **"Phase 7 §0.4 discipline #8 + Q21..."**
+but the actual content in `PHASE_7_PLAN.md` §0.4 correctly numbers
+the new discipline as **#9** (the next number after the existing 8
+disciplines). The doc content is authoritative.
+
+This errata note exists for future grep'ing — if someone searches
+the git log for "discipline #8" expecting the financial-opt-in
+rule, this section directs them to **discipline #9 in §0.4** of
+`PHASE_7_PLAN.md`.
+
+Captured 2026-05-27 as a follow-up to the §G resolutions commit.
