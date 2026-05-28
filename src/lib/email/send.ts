@@ -4,20 +4,26 @@
  * sendEmail() runs every safety gate an outbound message must pass:
  *   1. duplicate-send suppression — fails CLOSED on unverifiable (an
  *      unreadable email_log blocks the send rather than letting it through)
- *   2. test-mode recipient allowlisting
- *   3. test-mode-only guard (the wired send path is authorized for test mode
- *      only — see EMAIL_SAFETY.md section 5)
+ *   2. recipient allowlisting — per-mode, deny-by-default (test:
+ *      APPROVED_TEST_EMAILS; production: EMAIL_PRODUCTION_ALLOWLIST, or all
+ *      recipients only when EMAIL_OPEN_SEND=true). Empty allowlist => nobody.
+ *   3. production-send authorization — two-key: production sending is blocked
+ *      unless EMAIL_PRODUCTION_SEND_AUTHORIZED=true. Test mode unaffected.
+ *      See EMAIL_SAFETY.md §5/§8.
  *   4. delivery via Resend, then logging the provider's verdict to email_log
  *
- * The Resend send path is WIRED and ACTIVE for `test` mode only. In any other
- * mode the message is blocked before delivery. The status (`sent`/`failed`) is
- * logged AFTER the provider responds — never a pre-emptive `queued`.
+ * Staged rollout (EMAIL_SAFETY.md §8): test mode sends to allowlisted
+ * recipients as before; production sends require the authorize flag (Gate 3)
+ * and stay allowlist-restricted (Gate 2) until EMAIL_OPEN_SEND=true. The
+ * status (`sent`/`failed`) is logged AFTER the provider responds — never a
+ * pre-emptive `queued`.
  */
 import "server-only";
 import { Resend } from "resend";
 import {
   getEmailMode,
   getFromAddress,
+  isProductionSendAuthorized,
   isRecipientAllowed,
   normalizeAddress,
 } from "./config";
@@ -62,13 +68,14 @@ export async function sendEmail(
     return { delivered: false, status: "blocked", mode, reason };
   }
 
-  // --- Gate 3: the wired send path is authorized for TEST MODE ONLY ---
-  // Production sending stays blocked here until the EMAIL_SAFETY.md
-  // blocking-before-production items are resolved and signed off.
-  if (mode !== "test") {
+  // --- Gate 3: production sending requires explicit two-key authorization ---
+  // Test mode stays authorized as-is (EMAIL_SAFETY.md §4). Production sending
+  // is blocked UNLESS EMAIL_PRODUCTION_SEND_AUTHORIZED=true — setting
+  // EMAIL_MODE=production alone does not start sending (deny-by-default).
+  if (mode === "production" && !isProductionSendAuthorized()) {
     const reason =
-      "Blocked — the Resend send path is authorized for test mode only; " +
-      "production sending is not yet permitted (see EMAIL_SAFETY.md).";
+      "Blocked — production sending is not authorized " +
+      "(set EMAIL_PRODUCTION_SEND_AUTHORIZED=true after EMAIL_SAFETY.md §8 sign-off).";
     await logEmailAttempt(email, mode, "blocked", reason);
     return { delivered: false, status: "blocked", mode, reason };
   }
