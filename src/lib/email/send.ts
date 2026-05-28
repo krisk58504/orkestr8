@@ -37,6 +37,10 @@ import type { EmailSendResult, OutboundEmail } from "./types";
 export async function sendEmail(
   email: OutboundEmail,
 ): Promise<EmailSendResult> {
+  // SINGLE-RECIPIENT INVARIANT (EMAIL_SAFETY.md §5 item 2): sendEmail gates
+  // exactly one address (email.to). If cc/bcc/multi-recipient is ever added,
+  // EVERY individual address MUST be re-gated through isRecipientAllowed —
+  // adding recipients must not bypass the allowlist.
   const mode = getEmailMode();
 
   // --- Gate 1: duplicate-send suppression (automation-loop protection) ---
