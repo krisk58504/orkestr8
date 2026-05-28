@@ -554,7 +554,12 @@ verification at walk-test scale).
    WHERE tablename = 'vendor_documents'
    ORDER BY polname;
    ```
-   Expected: same set as Phase 2 (4 policies), no slice 5 additions.
+   Expected: same set as Phase 2 (2 policies — `vendor_documents_select`
+   + `vendor_documents_write`, per
+   `supabase/migrations/20260519000800_phase2_rls.sql:70+79`), no
+   slice 5 additions. (Erratum: the original audit said "4 policies"
+   from an authoring miscount during slice 5 audit drafting; corrected
+   here after Step 0.3 walk-test verification.)
 
 4. **Verify the slice 1 handler still resolves** (`vendor_doc_expiry`
    handler row in `automations` table for Sterling exists and is
