@@ -357,9 +357,9 @@ Plain-English paragraphs:
 >
 > Continued work assignments require valid proof of insurance on
 > file. Failure to renew your certificate before the expiration date
-> may result in suspension of new work-order assignments. Active
-> work orders may continue at the property manager's discretion
-> pending updated documentation.
+> may result in your property manager suspending new work-order
+> assignments. Active work orders may continue at the property
+> manager's discretion pending updated documentation.
 >
 > Please request a renewed certificate from your insurer and upload it
 > through the vendor portal at {portalUrl}/documents at your earliest
@@ -369,10 +369,14 @@ Plain-English paragraphs:
 > instructions, contact your property manager directly.
 
 `{...}` are template variables resolved at render time. The
-"suspension of new work-order assignments" language is intentionally
-descriptive rather than prescriptive — slice 5 does NOT actually
-suspend the vendor (that's #38 auto-suspend, future slice). The copy
-sets the expectation; #38 enforces it structurally when shipped.
+"your property manager suspending new work-order assignments"
+language is intentionally descriptive rather than prescriptive AND
+attributes agency to the property manager rather than the system —
+slice 5 does NOT auto-suspend the vendor (that's #38 auto-suspend,
+future slice; until then, suspension is a manual PM action via the
+existing vendor_status field). The copy sets the expectation
+without misleading vendors about who performs the action; #38
+enforces it structurally when shipped.
 
 ### §5.2 — Notifications (deferred — Q4 / §G.4)
 
@@ -679,27 +683,41 @@ Re-invoke runner immediately. Expected:
 - `automation_runs` unchanged (4 rows total for slice 5 — same as
   scenario a end-state)
 
-**Scenario (c) — Next-day inner anti-join**
+**Scenario (c) — Same-key re-attempt blocked by outer UNIQUE**
 
-Simulate "next day" by deleting today's automation_runs rows for the
-slice 5 automation_id (matches slice 4 scenario c pattern). Re-invoke
-runner. Expected:
-- `runs_attempted += 4` (the handler rechecks the targets — but
-  today's targets are the same as scenario a's, so same 4 pairs)
-- Wait — but the idempotency key includes the threshold (not today's
-  date), so re-inserting the same `(doc, threshold)` collides again
-- **Correct expected behavior**: `runs_skipped += 4` (UNIQUE collision
-  blocks all 4; the inner per-pair idempotency is what prevents
-  re-emailing, NOT the outer date)
-- `email_log` unchanged
+Slice 5 has NO inner anti-join (unlike slice 4) — its only idempotency
+mechanism is the `automation_runs(automation_id, idempotency_key)`
+UNIQUE constraint, where the key is
+`vendor_insurance_renewal:{doc_id}:{threshold_days}` (doc + threshold,
+NO date component). This scenario proves the outer-UNIQUE block holds
+when the runner re-attempts the same (doc, threshold) pair on a
+later day.
 
-**Note on idempotency shape difference from slice 4**: slice 5's
-idempotency key is `vendor_insurance_renewal:{doc_id}:{threshold_days}`
-(doc + threshold, no date). This means a doc that crossed the 60-day
-threshold yesterday and emailed yesterday CANNOT re-email at the
-60-day threshold today (the key is the same). It WILL email at the
-30-day threshold when it crosses that future target. This matches
-slice 1's vendor_doc_expiry idempotency shape exactly.
+Set up: Take scenario (a)'s end-state (4 ok rows in automation_runs).
+The 4 keys are persisted; the underlying vendor_documents fixture's
+expires_on dates are unchanged (still matching today's target dates).
+Re-invoke runner WITHOUT deleting any rows (the outer key is not
+date-keyed; the runner re-derives the same targets and the same keys).
+
+Expected:
+- Handler's detection query returns the same 4 candidates
+- For each, the INSERT into `automation_runs` collides on UNIQUE
+- `runs_attempted += 0` / `runs_skipped += 4` / `runs_succeeded += 0`
+- `email_log` unchanged (0 new rows)
+
+This proves: vendor will NOT re-receive the 60-day email tomorrow
+just because cron fires again. The (doc, 60) key is the same as
+yesterday's and yesterday's row blocks today's INSERT. The vendor
+WILL receive a NEW email when the doc crosses the 30-day target
+(different `threshold_days` portion of the key → distinct UNIQUE
+slot).
+
+**Idempotency shape difference from slice 4**: slice 5's key has no
+date component; slice 4's did (`late_fee_application:YYYY-MM-DD`).
+Both are correct for their respective domains — slice 4 needs daily
+re-attempt eligibility (an over-and-over-overdue charge); slice 5
+needs at-most-once-per-pair semantics (one email per threshold,
+ever, per doc). Matches slice 1's `vendor_doc_expiry` shape exactly.
 
 **Scenario (d) — Threshold-window in-bounds NOT eligible**
 
@@ -832,21 +850,24 @@ days" subject for a 7-day-warning email. Vendor reputation impact.
 - Fallback subject (`"Insurance renewal due in {daysUntilExpiry} days"`)
   is safe even for unexpected threshold values (graceful degrade)
 
-**§9.2.2 — Partner-confused-by-suspension-language risk**
+**§9.2.2 — Partner-confused-by-suspension-language risk** (mitigated by polish (a))
 
-Worst case: the body's "may result in suspension of new work-order
-assignments" language is descriptive — slice 5 does not actually
-suspend the vendor. A partner reading the email may assume the system
-will auto-suspend their vendor, then be surprised when they need to
-manually flip vendor_status. Slice 5 sets an expectation that #38
-auto-suspend will fulfill structurally; in the gap between slice 5
-ship and #38 ship, the partner experience could be confused.
+Worst case: the body's suspension language reads as a system action
+— vendor assumes the PMS will auto-suspend their account on the
+expiration date; in reality slice 5 only sends the email and #38
+(future slice) adds structural auto-suspend. Audit-polish (a) updated
+the body wording from "may result in suspension of new work-order
+assignments" → "may result in your property manager suspending new
+work-order assignments" to attribute agency to the PM, not the
+system.
 
-**Mitigations**:
+**Residual mitigations after polish (a)**:
 - Document at slice 5 sign-off: "auto-suspend is #38, scheduled for a
   later Tier 2 slice"
 - Body language stays descriptive, not promissory ("may result in" not
   "will result in")
+- PM-agency attribution in the copy aligns with structural reality
+  today (manual vendor_status flip)
 - Operator runbook clarifies the gap for partner-facing FAQ
 
 **§9.2.3 — Slice 1 retroactive index benefit verification gap**
