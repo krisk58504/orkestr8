@@ -57,7 +57,7 @@ async function run(
       error_message: "invalid_config",
       result: { issues: parsed.error.issues } as never,
     });
-    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1 };
+    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1, suppressed: 0, blocked: 0 };
   }
   const config = parsed.data;
 
@@ -79,7 +79,7 @@ async function run(
     .eq("document_type", "insurance")
     .in("expires_on", targetDateStrings);
   if (docsError) {
-    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1 };
+    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1, suppressed: 0, blocked: 0 };
   }
 
   let attempted = 0,
@@ -195,7 +195,7 @@ async function run(
     }
   }
 
-  return { attempted, succeeded, skipped, failed };
+  return { attempted, succeeded, skipped, failed, suppressed: 0, blocked: 0 };
 }
 
 export const vendorInsuranceRenewalHandler: AutomationHandler = {

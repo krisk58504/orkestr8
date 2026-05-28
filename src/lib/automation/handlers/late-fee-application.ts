@@ -102,7 +102,7 @@ async function run(
       error_message: "invalid_config",
       result: { issues: parsed.error.issues } as never,
     });
-    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1 };
+    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1, suppressed: 0, blocked: 0 };
   }
   const config = parsed.data;
 
@@ -124,7 +124,7 @@ async function run(
     .single();
   if (runInsertError || !automationRun) {
     // UNIQUE collision — already ran today.
-    return { attempted: 0, succeeded: 0, skipped: 1, failed: 0 };
+    return { attempted: 0, succeeded: 0, skipped: 1, failed: 0, suppressed: 0, blocked: 0 };
   }
 
   // Compute the boundary date: due_date must be strictly less than
@@ -155,7 +155,7 @@ async function run(
         result: { stage: "candidates_query" } as never,
       })
       .eq("id", automationRun.id);
-    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1 };
+    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1, suppressed: 0, blocked: 0 };
   }
   const candidateList: EligibleRow[] = candidates ?? [];
 
@@ -175,7 +175,7 @@ async function run(
         } as never,
       })
       .eq("id", automationRun.id);
-    return { attempted: 0, succeeded: 0, skipped: 0, failed: 0 };
+    return { attempted: 0, succeeded: 0, skipped: 0, failed: 0, suppressed: 0, blocked: 0 };
   }
 
   // Anti-join: skip candidates that already have a 'fee'-type child.
@@ -199,7 +199,7 @@ async function run(
         } as never,
       })
       .eq("id", automationRun.id);
-    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1 };
+    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1, suppressed: 0, blocked: 0 };
   }
   const feedParentIds = new Set(
     (existingFees ?? [])
@@ -233,6 +233,8 @@ async function run(
       succeeded: 0,
       skipped: alreadyFeedCount,
       failed: 0,
+      suppressed: 0,
+      blocked: 0,
     };
   }
 
@@ -280,6 +282,8 @@ async function run(
       succeeded: 0,
       skipped: alreadyFeedCount,
       failed: eligible.length,
+      suppressed: 0,
+      blocked: 0,
     };
   }
 
@@ -308,6 +312,8 @@ async function run(
     succeeded: eligible.length,
     skipped: alreadyFeedCount,
     failed: 0,
+    suppressed: 0,
+    blocked: 0,
   };
 }
 

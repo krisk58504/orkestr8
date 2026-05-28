@@ -86,7 +86,7 @@ async function run(
       error_message: "invalid_config",
       result: { issues: parsed.error.issues } as never,
     });
-    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1 };
+    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1, suppressed: 0, blocked: 0 };
   }
   const config = parsed.data;
 
@@ -111,7 +111,7 @@ async function run(
   if (runInsertError || !run) {
     // UNIQUE collision — this period already has a completed run.
     // Silent skip per audit §3.3 step 2.
-    return { attempted: 0, succeeded: 0, skipped: 1, failed: 0 };
+    return { attempted: 0, succeeded: 0, skipped: 1, failed: 0, suppressed: 0, blocked: 0 };
   }
 
   // Override the default `due_date` if config.due_day > 1. Compute
@@ -141,7 +141,7 @@ async function run(
         result: { stage: "leases_query" } as never,
       })
       .eq("id", run.id);
-    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1 };
+    return { attempted: 0, succeeded: 0, skipped: 0, failed: 1, suppressed: 0, blocked: 0 };
   }
   const leaseList = leases ?? [];
   if (leaseList.length === 0) {
@@ -159,7 +159,7 @@ async function run(
         } as never,
       })
       .eq("id", run.id);
-    return { attempted: 0, succeeded: 0, skipped: 0, failed: 0 };
+    return { attempted: 0, succeeded: 0, skipped: 0, failed: 0, suppressed: 0, blocked: 0 };
   }
 
   const leaseIds = leaseList.map((l) => l.id);
@@ -266,6 +266,8 @@ async function run(
         skipped:
           leasesSkippedAlreadyCharged + leasesSkippedNoTenant,
         failed: inserts.length,
+        suppressed: 0,
+        blocked: 0,
       };
     }
     chargesCreated = inserts.length;
@@ -291,6 +293,8 @@ async function run(
     succeeded: chargesCreated,
     skipped: leasesSkippedAlreadyCharged + leasesSkippedNoTenant,
     failed: 0,
+    suppressed: 0,
+    blocked: 0,
   };
 }
 

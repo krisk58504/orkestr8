@@ -29,6 +29,8 @@ export type RunnerSummary = {
   succeeded: number;
   skipped: number;
   failed: number;
+  suppressed: number;
+  blocked: number;
   org_gated: number;
 };
 
@@ -48,6 +50,8 @@ export async function runAllAutomations(): Promise<RunnerSummary> {
     succeeded: 0,
     skipped: 0,
     failed: 0,
+    suppressed: 0,
+    blocked: 0,
     org_gated: 0,
   };
 
@@ -102,20 +106,41 @@ export async function runAllAutomations(): Promise<RunnerSummary> {
         status: "blocked",
         result: { reason: "handler_threw", error: message } as never,
       });
-      result = { attempted: 0, succeeded: 0, skipped: 0, failed: 1 };
+      result = {
+        attempted: 0,
+        succeeded: 0,
+        skipped: 0,
+        failed: 1,
+        suppressed: 0,
+        blocked: 0,
+      };
     }
 
     summary.attempted += result.attempted;
     summary.succeeded += result.succeeded;
     summary.skipped += result.skipped;
     summary.failed += result.failed;
+    summary.suppressed += result.suppressed;
+    summary.blocked += result.blocked;
 
-    // Update the parent automation's last-run summary.
+    // Update the parent automation's last-run summary (slice 6 §3.2
+    // derivation): 'failed' on any genuine failure; 'degraded' when the
+    // run delivered nothing because every attempted send was suppressed
+    // or blocked (delivery may be silently broken — check EMAIL_MODE, the
+    // recipient allowlist, and the dedup window); 'ok' otherwise. A run
+    // with nothing eligible (no sends attempted) stays 'ok', not degraded.
+    const lastRunStatus =
+      result.failed > 0
+        ? "failed"
+        : result.succeeded === 0 &&
+            (result.suppressed > 0 || result.blocked > 0)
+          ? "degraded"
+          : "ok";
     await admin
       .from("automations")
       .update({
         last_run_at: new Date().toISOString(),
-        last_run_status: result.failed > 0 ? "failed" : "ok",
+        last_run_status: lastRunStatus,
       })
       .eq("id", row.id);
 

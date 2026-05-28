@@ -16,6 +16,10 @@ export type HandlerResult = {
   succeeded: number;
   skipped: number;
   failed: number;
+  /** Email dedup-suppressed sends (slice 6) — not errors. */
+  suppressed: number;
+  /** Email safety/allowlist/mode-gated sends (slice 6) — not errors. */
+  blocked: number;
 };
 
 export type HandlerRunParams = {
