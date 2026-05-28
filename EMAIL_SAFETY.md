@@ -96,13 +96,36 @@ Recorded 2026-05-19 as a precondition of the test-mode wiring:
 - [x] **Section 5 item 1** — `checkRecentDuplicate()` fails CLOSED
       (`unverifiable` → blocked). _(migration on logic only; verified
       `scripts/test-email.ts` T3/T4, 2026-05-19)_
-- [ ] **Section 5 item 2** — multi-recipient re-gating addressed (or sending
-      kept single-recipient).
-- [ ] Separate production Resend key configured by the operator (not committed).
-- [ ] Test-mode-only guard in `sendEmail()` removed/relaxed only with sign-off.
-- [ ] `EMAIL_MODE=production` set only in the production environment.
+- [x] **Section 5 item 2** — single-recipient invariant: `OutboundEmail.to`
+      is a single `string` (no cc/bcc); every send site passes exactly one
+      address; guard comment added at the `sendEmail()` chokepoint. _(staged
+      rollout audit §4, 2026-05-28)_
+- [x] **Staged-rollout re-gate (code, 2026-05-28 — supersedes the
+      "test-mode-only guard" tripwire below).** The `mode !== "test"` hard
+      block is relaxed under the documented sign-off in
+      `EMAIL_SAFETY_PROD_SIGNOFF_AUDIT.md` and replaced by the two-key staged
+      gate: Gate 3 blocks production sends unless
+      `EMAIL_PRODUCTION_SEND_AUTHORIZED=true`; Gate 2 enforces a per-mode
+      allowlist (production: `EMAIL_PRODUCTION_ALLOWLIST`), opening to all only
+      when `EMAIL_OPEN_SEND=true`. All three flags parse deny-by-default.
+- [x] **Gate 3 authorize flag** `EMAIL_PRODUCTION_SEND_AUTHORIZED` implemented
+      (deny-by-default; only literal `"true"` authorizes). _(code)_
+- [x] **Production allowlist** `EMAIL_PRODUCTION_ALLOWLIST` enforced by
+      default; empty = nobody (no fail-open). _(code)_
+- [x] **Open-send flag** `EMAIL_OPEN_SEND` for full launch (deny-by-default).
+      _(code — the flag is implemented; SETTING it in prod is the §8 go-live step)_
 - [ ] Verified: with `EMAIL_MODE=test`, no mail reaches non-allowlisted
-      addresses.
+      addresses. _(verified by walk-test — run pending)_
+- [ ] Verified sending domain + `EMAIL_FROM` set (real-delivery prerequisite;
+      without it the sandbox sender reaches only the verified self address).
+      _(operator, §8)_
+- [ ] Separate production Resend key configured by the operator (not committed).
+      _(operator, §8)_
+- [ ] `EMAIL_MODE=production` set only in the production environment.
+      _(operator, §8)_
+- [ ] `EMAIL_PRODUCTION_SEND_AUTHORIZED=true` set in production (Phase 1 soft
+      launch). _(operator, §8)_
+- [ ] `EMAIL_OPEN_SEND=true` set when going fully live (Phase 2). _(operator, §8)_
 
 ## 7. Phase 3 gate-tightening — recipient normalization
 
@@ -177,6 +200,77 @@ would let any plus-aliased variant of that address pass the gate.
   in order or behavior. §7.1 is a transformation at the Resend handoff
   AFTER all four gates have admitted the send; §7.2 is a comparison
   refinement INSIDE Gate 2.
-- §5/§6 blockers and verifications stand: Gate 3's test-mode-only guard
-  still blocks every production-mode send.
+- §5/§6 blockers and verifications stand AS OF PHASE 3: Gate 3's
+  test-mode-only guard still blocks every production-mode send.
+  **[Superseded 2026-05-28]** — Gate 3 is now the two-key
+  production-authorize gate (§8 / `EMAIL_SAFETY_PROD_SIGNOFF_AUDIT.md`):
+  production sends are permitted only with
+  `EMAIL_PRODUCTION_SEND_AUTHORIZED=true`, and stay allowlist-restricted
+  (`EMAIL_PRODUCTION_ALLOWLIST`) until `EMAIL_OPEN_SEND=true`.
+
+## 8. Production email rollout runbook (operator-only)
+
+> Design + rationale: `EMAIL_SAFETY_PROD_SIGNOFF_AUDIT.md`. Cross-ref:
+> `PRODUCTION_CHECKLIST.md` Gate-3 row. The send code is staged and
+> deny-by-default; the steps below are the operator/config actions that
+> turn real sending on. Nothing here runs in dev — on dev the new flags
+> stay unset, which is the safe default the walk-test exercises.
+
+### 8.1 The three controls (all deny-by-default — only literal `true` enables)
+
+| Env var | Effect | Unset / typo |
+|---|---|---|
+| `EMAIL_MODE` | `production` selects the prod path; anything else → `test` | → `test` |
+| `EMAIL_PRODUCTION_SEND_AUTHORIZED` | Gate 3 master switch — `true` authorizes production sending | → blocked |
+| `EMAIL_PRODUCTION_ALLOWLIST` | comma/space-separated recipients permitted in production | → nobody |
+| `EMAIL_OPEN_SEND` | `true` lifts the allowlist (full launch — send to everyone) | → allowlist-enforced |
+
+`EMAIL_MODE=production` **alone does not send** — both Gate 3 (authorize)
+and Gate 2 (recipient) must admit a message.
+
+### 8.2 Prerequisites (production host environment only — never committed)
+
+1. **Production Resend API key** — a separate key from dev/test; set
+   `RESEND_API_KEY` in the prod environment.
+2. **Verified sending domain + DNS** — add and verify a domain in Resend;
+   publish the required SPF/DKIM records. Until done, the only deliverable
+   sender is the sandbox `onboarding@resend.dev`, which delivers **only to
+   the Resend account's own verified address** — real recipients log `failed`.
+3. **`EMAIL_FROM`** — set to a verified-domain address (e.g.
+   `Orkestr8 <noreply@yourdomain.com>`). **Hard prerequisite for real
+   delivery**: without it, `getFromAddress()` falls back to the sandbox
+   sender.
+
+### 8.3 Staged rollout (each phase reversible)
+
+- **Phase 0 — blocked (default/resting):** none of the new flags set →
+  production sending blocked at Gate 3. Safe.
+- **Phase 1 — soft launch (self only):**
+  1. `EMAIL_PRODUCTION_ALLOWLIST=<operator's own address>`.
+  2. `EMAIL_MODE=production` **and** `EMAIL_PRODUCTION_SEND_AUTHORIZED=true`.
+  3. Leave `EMAIL_OPEN_SEND` **unset**.
+  4. **Verify (soft-launch checkpoint):** trigger a real send to the
+     allowlisted self address → confirm `email_log.status='sent'` **and**
+     actual receipt through the production domain. Trigger a send to a
+     non-allowlisted address → confirm `email_log.status='blocked'` (no
+     delivery). This proves the prod path works AND the allowlist restricts.
+- **Phase 2 — go live (all recipients):**
+  5. **Set `EMAIL_OPEN_SEND=true`.** ← this is "go live". **Do NOT** clear
+     the allowlist to go live — an empty allowlist means *nobody* (§8.1).
+
+### 8.4 Rollback (either step, instantly)
+
+- Un-set `EMAIL_OPEN_SEND` → back to allowlist-restricted soft launch.
+- Un-set `EMAIL_PRODUCTION_SEND_AUTHORIZED` → back to fully blocked
+  (Phase 0), regardless of `EMAIL_MODE`.
+
+### 8.5 The settings-page badge is DECOUPLED from the real gate
+
+The Settings page renders a Test/Production badge from the org-level
+`organizations.email_mode` column. **That column is NOT what the send gate
+reads** — the gate reads the environment variables above. An operator must
+**not** rely on the badge to judge whether mail is flowing: the env vars
+(`EMAIL_MODE` + `EMAIL_PRODUCTION_SEND_AUTHORIZED` + the allowlist /
+`EMAIL_OPEN_SEND`) are the source of truth. (Future work may wire the badge
+to the real gate state or relabel it — see the audit §9.2.1.)
 - The audit trail in `email_log` is unchanged in shape.
