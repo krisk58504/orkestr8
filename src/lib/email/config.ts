@@ -51,6 +51,37 @@ export function getApprovedTestEmails(): string[] {
 }
 
 /**
+ * Whether production sending is explicitly authorized (Gate 3, two-key).
+ * Deny-by-default: only the literal "true" authorizes; unset/empty/"TRUE"/
+ * "1"/"yes"/typo → false → blocked. Mirrors getEmailMode()'s posture.
+ */
+export function isProductionSendAuthorized(): boolean {
+  return process.env.EMAIL_PRODUCTION_SEND_AUTHORIZED === "true";
+}
+
+/**
+ * Whether recipient restriction is lifted (full launch). Deny-by-default:
+ * only the literal "true" opens; anything else keeps the allowlist enforced.
+ */
+export function isOpenSendEnabled(): boolean {
+  return process.env.EMAIL_OPEN_SEND === "true";
+}
+
+/**
+ * Parsed production allowlist (comma/whitespace-separated). Empty when the
+ * env var is unset — which, because isRecipientAllowed treats an empty
+ * allowlist as "nobody", blocks all production sends until it is populated
+ * OR EMAIL_OPEN_SEND=true is set. Deny-by-default: absence => nobody.
+ */
+export function getProductionAllowlist(): string[] {
+  const raw = process.env.EMAIL_PRODUCTION_ALLOWLIST ?? "";
+  return raw
+    .split(/[,\s]+/)
+    .map((entry) => normalizeAddress(entry))
+    .filter((entry) => entry.length > 0);
+}
+
+/**
  * Whether `address` may receive mail under the current mode.
  * - production: any address is permitted (a human raised the mode).
  * - test: only addresses on the APPROVED_TEST_EMAILS allowlist. Plus-tag
