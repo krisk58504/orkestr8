@@ -39,6 +39,12 @@ const VendorDocExpiryConfigSchema = z.object({
     .default([30, 14, 7]),
   template_id: z.string().default("vendor_doc_expiry_default"),
   notify_pm: z.boolean().default(false), // future-slice hook; not wired in slice 1
+  // Document types to EXCLUDE from this handler's scan (slice 6 work-stream
+  // B). Default [] = scan all types (byte-identical to pre-slice-6 behavior).
+  // An operator who also runs the slice 5 insurance handler sets this to
+  // ['insurance'] to delegate insurance renewals to slice 5 and avoid a
+  // double email for the same cert.
+  exclude_document_types: z.array(z.string()).default([]),
 });
 
 export type VendorDocExpiryConfig = z.infer<typeof VendorDocExpiryConfigSchema>;
@@ -73,11 +79,24 @@ async function run(
   const targetDateStrings = targets.map((t) => t.dateString);
 
   // Pull all vendor_documents in the org that mature into any target date.
-  const { data: docs, error: docsError } = await admin
+  // When exclude_document_types is non-empty, drop those types (slice 6
+  // work-stream B); the empty-default path emits byte-identical SQL to
+  // pre-slice-6.
+  let query = admin
     .from("vendor_documents")
     .select("id, vendor_id, document_type, name, expires_on, vendors!inner(name, email)")
     .eq("organization_id", params.organizationId)
     .in("expires_on", targetDateStrings);
+  if (config.exclude_document_types.length > 0) {
+    // document_type is a NOT NULL enum, so NOT-IN drops nothing
+    // unintended (audit §5.3).
+    query = query.not(
+      "document_type",
+      "in",
+      `(${config.exclude_document_types.join(",")})`,
+    );
+  }
+  const { data: docs, error: docsError } = await query;
   if (docsError) {
     return { attempted: 0, succeeded: 0, skipped: 0, failed: 1, suppressed: 0, blocked: 0 };
   }
