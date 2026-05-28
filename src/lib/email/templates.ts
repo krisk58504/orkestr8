@@ -16,6 +16,7 @@ export const EMAIL_TEMPLATE = {
   tenantInvite: "tenant.invite",
   tenantMessage: "tenant.message",
   vendorDocExpiry: "vendor_document.expiring",
+  vendorInsuranceRenewal: "vendor.insurance_renewal",
 } as const;
 
 export type EmailTemplateId =
@@ -329,5 +330,81 @@ One of your compliance documents is expiring soon.
 ${detailsText(rows)}
 
 ${urgency}`;
+  return { subject, html, text };
+}
+
+// --- Vendor insurance certificate renewal cascade (Phase 7 slice 5) -------
+
+export type VendorInsuranceRenewalData = {
+  vendorName: string;
+  documentName: string;
+  /** YYYY-MM-DD. */
+  expiresOn: string;
+  /** Matches the threshold that fired — 60 / 30 / 14 / 7 by default. */
+  daysUntilExpiry: number;
+  /** Optional — defaults to the PMS portal root if not supplied. */
+  portalUrl?: string;
+};
+
+function vendorInsuranceRenewalSubject(
+  daysUntilExpiry: number,
+  vendorName: string,
+): string {
+  switch (daysUntilExpiry) {
+    case 60:
+      return `Insurance renewal due in 60 days — ${vendorName}`;
+    case 30:
+      return `Insurance renewal due in 30 days — Action required`;
+    case 14:
+      return `Urgent: Insurance renewal due in 14 days — ${vendorName}`;
+    case 7:
+      return `Final notice: Insurance certificate expires in 7 days`;
+    default:
+      return `Insurance renewal due in ${daysUntilExpiry} days — ${vendorName}`;
+  }
+}
+
+export function vendorInsuranceRenewalEmail(
+  data: VendorInsuranceRenewalData,
+): EmailContent {
+  const portalUrl = data.portalUrl ?? "https://app.orkestr8.com";
+  const subject = vendorInsuranceRenewalSubject(
+    data.daysUntilExpiry,
+    data.vendorName,
+  );
+  const rows: [string, string][] = [
+    ["Vendor", data.vendorName],
+    ["Document", data.documentName],
+    ["Expires on", data.expiresOn],
+    ["Days remaining", String(data.daysUntilExpiry)],
+  ];
+  const html = layout(
+    "Insurance certificate renewal",
+    paragraph(`Hello ${data.vendorName},`) +
+      paragraph(
+        `Your insurance certificate ${data.documentName} on file with us is set to expire on ${data.expiresOn} (${data.daysUntilExpiry} days from today).`,
+      ) +
+      paragraph(
+        "Continued work assignments require valid proof of insurance on file. Failure to renew your certificate before the expiration date may result in your property manager suspending new work-order assignments. Active work orders may continue at the property manager's discretion pending updated documentation.",
+      ) +
+      detailsHtml(rows) +
+      paragraph(
+        `Please request a renewed certificate from your insurer and upload it through the vendor portal at <a href="${portalUrl}/documents">${portalUrl}/documents</a> at your earliest convenience.`,
+      ) +
+      paragraph(
+        "If you have questions about coverage requirements or upload instructions, contact your property manager directly.",
+      ),
+  );
+  const text = `Hello ${data.vendorName},
+
+Your insurance certificate ${data.documentName} on file with us is set to expire on ${data.expiresOn} (${data.daysUntilExpiry} days from today).
+
+Continued work assignments require valid proof of insurance on file. Failure to renew your certificate before the expiration date may result in your property manager suspending new work-order assignments. Active work orders may continue at the property manager's discretion pending updated documentation.
+
+${detailsText(rows)}
+
+Please request a renewed certificate from your insurer and upload it through the vendor portal at ${portalUrl}/documents at your earliest convenience.
+
+If you have questions about coverage requirements or upload instructions, contact your property manager directly.`;
   return { subject, html, text };
 }

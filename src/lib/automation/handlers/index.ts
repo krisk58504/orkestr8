@@ -3,6 +3,7 @@ import type { AutomationHandler } from "@/lib/automation/types";
 import { lateFeeApplicationHandler } from "./late-fee-application";
 import { rentChargeGenerationHandler } from "./rent-charge-generation";
 import { vendorDocExpiryHandler } from "./vendor-doc-expiry";
+import { vendorInsuranceRenewalHandler } from "./vendor-insurance-renewal";
 
 /**
  * Handler registry — the single source of truth for "what automation
@@ -14,6 +15,7 @@ const HANDLERS: Record<string, AutomationHandler> = {
   [vendorDocExpiryHandler.type]: vendorDocExpiryHandler,
   [rentChargeGenerationHandler.type]: rentChargeGenerationHandler,
   [lateFeeApplicationHandler.type]: lateFeeApplicationHandler,
+  [vendorInsuranceRenewalHandler.type]: vendorInsuranceRenewalHandler,
 };
 
 export function getHandler(type: string): AutomationHandler | null {

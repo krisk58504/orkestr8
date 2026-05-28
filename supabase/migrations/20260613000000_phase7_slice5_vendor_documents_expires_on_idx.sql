@@ -1,0 +1,54 @@
+-- ===========================================================================
+-- 20260613000000_phase7_slice5_vendor_documents_expires_on_idx.sql
+--
+-- Phase 7 slice 5 — Insurance Certificate Renewal Cascade.
+--
+-- Adds a partial composite index on vendor_documents.(organization_id,
+-- expires_on) to support efficient threshold-cascade detection queries
+-- by both slice 5's vendor_insurance_renewal handler AND slice 1's
+-- existing vendor_doc_expiry handler (retroactive benefit — both
+-- handlers daily-scan this column shape and currently use the org_id
+-- index + post-filter).
+--
+-- Single delta:
+--
+--   1. vendor_documents_expires_on_idx — partial index on
+--      (organization_id, expires_on) WHERE expires_on IS NOT NULL.
+--
+--      Composite shape matches the natural lookup: org_id leading
+--      (handlers always filter to one org at a time via admin client
+--      .eq('organization_id', $1)), then expires_on (the threshold
+--      target dates filter).
+--
+--      Partial predicate (WHERE expires_on IS NOT NULL) — documents
+--      without an expiration date are not in scope for either
+--      handler (those are non-expiring artifacts like w9s or
+--      contracts without renewal). Skipping nulls keeps the index
+--      smaller; at production scale a meaningful fraction of rows
+--      will have NULL expires_on.
+--
+-- Partial-index pattern follows slice 4 precedent
+-- (rent_charges_parent_charge_id_idx WHERE parent_charge_id IS NOT NULL,
+-- per docs/PHASE_7_SLICE_4_AUDIT.md §E.1).
+--
+-- Cross-slice benefit (per docs/PHASE_7_SLICE_5_AUDIT.md §G):
+-- slice 1's vendor_doc_expiry handler (shipped 2026-05-26 in commit
+-- ranges around `4b92f0b`) scans the same column shape and benefits
+-- retroactively once this index lands. No code change required for
+-- slice 1; the planner picks up the new index automatically when
+-- selectivity favors it.
+--
+-- Planner-choice expectation: at Sterling-scale walk-test
+-- (~8 vendor_documents total), planner will likely choose Seq Scan
+-- over the partial index. Acceptable contingency matching slice 4
+-- §9.2.5 + §B.1 pattern. At production scale (hundreds-to-thousands
+-- of vendor_documents per partner org), planner should flip to
+-- Index Scan on this partial index.
+--
+-- RLS posture: unchanged. The new index is a planner artifact, not
+-- a row-access surface. No new policies needed per audit §6.
+-- ===========================================================================
+
+create index if not exists vendor_documents_expires_on_idx
+  on public.vendor_documents (organization_id, expires_on)
+  where expires_on is not null;
