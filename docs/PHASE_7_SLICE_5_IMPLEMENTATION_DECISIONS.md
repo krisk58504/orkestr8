@@ -426,18 +426,59 @@ correct ordering. Commit sequence:
 
 ### §F.5 — Walk-test fixture cleanup
 
-**Cleanup transaction pending — see Part 2.**
+**Decision (locked)**: clean BOTH slice 5 `automations` rows (Sterling
++ Kristophers). Unlike slice 4 — where Sterling's `late_fee_application`
+row was an intentional production opt-in preserved through cleanup —
+**Sterling is a seed/demo org with no production opt-in to preserve**.
+Slice 5 ships **available-but-enabled-nowhere**: the handler is
+registered, no org has an `automations` row, and an operator
+explicitly opts in whichever orgs should run the cascade.
 
-Walk-test seeded fixtures across both orgs that are NOT yet removed:
-- Sterling: ~8 insurance docs (scenarios a/c/d/e/h) + 1 license doc
-  (a) + 1 w9 doc (f) + 1 no-email vendor + its insurance doc (g) +
-  the slice 5 `automations` row + ~8 `automation_runs` rows + ~6
-  `email_log` rows
-- Kristophers: 1 insurance doc (i) + the slice 5 `automations` row +
-  1 `automation_runs` row
+**Cleanup transaction** (4 statements, committed atomically) deleted
+**22 rows total**:
 
-The actual deleted-row counts + the Sterling-opt-in-row-persistence
-decision (see §F.6) get filled in here after Part 2 runs.
+| # | Statement | Rows |
+|---|---|---|
+| 1 | `automation_runs` where automation_type='vendor_insurance_renewal' (both orgs) | 9 |
+| 2 | `automations` where automation_type='vendor_insurance_renewal' (both orgs) | 2 |
+| 3 | `vendor_documents` where name LIKE 'Walk-test%' (both orgs) | 10 |
+| 4 | `vendors` where name LIKE 'Walk-test%' (Sterling scenario-(g) no-email vendor) | 1 |
+
+The 10 deleted vendor_documents = 9 Sterling (scenario a's 4 insurance
++ 1 license, scenario d/e's aged doc, scenario f's w9, scenario g's
+no-email insurance, scenario h's 14-day insurance) + 1 Kristophers
+(scenario i). The `automation_runs` FK (`automation_runs_automation_id_fkey`)
+is `ON DELETE CASCADE`, so statement 2 alone would have cascaded the
+runs — statement 1 ran first for clean per-statement counts.
+
+**email_log preserved (delivery audit trail)**: the 8
+`vendor.insurance_renewal` email_log rows were KEPT. FK inspection
+confirmed `email_log` has exactly one foreign key
+(`organization_id → organizations`); `related_entity_id` is a
+plain/polymorphic uuid with no FK to `vendor_documents`, so deleting
+the docs left the log rows intact (with now-dangling
+`related_entity_id` values pointing at deleted docs — acceptable for a
+historical send record). These 8 rows document that the walk-test
+sends actually happened.
+
+**Post-cleanup state verified**:
+```
+slice5_automations_remaining: 0
+slice5_runs_remaining:        0
+walktest_docs_remaining:      0
+walktest_vendors_remaining:   0
+```
+
+**Pre-existing fixtures confirmed intact** (NOT touched by cleanup):
+```
+sterling_vendors:           3   (DFW HVAC / Lone Star / North Texas — the no-email walk-test vendor is gone)
+kristophers_vendors:        1   (pre-existing "TEST VENDOR" — scenario i reused it, did not create it)
+sterling_slice1_automation: 1   (slice 1's vendor_doc_expiry row untouched)
+```
+
+Kristophers's "TEST VENDOR" was correctly excluded from the
+`name LIKE 'Walk-test%'` delete — it predates slice 5 and was only
+*reused* by scenario (i), not created by it.
 
 ### §F.6 — Production readiness
 
@@ -448,18 +489,15 @@ decision (see §F.6) get filled in here after Part 2 runs.
 - **Opt-in posture honored** (§0.4 #9 / audit §G.6): the handler is
   registered in the registry but no org gets an auto-seeded
   `automations` row. Partners explicitly opt in per-org.
-- **Walk-test automation-row decision (Part 2)**: Sterling's slice 5
-  `automations` row (`0ca066de-...`) and Kristophers's
-  (`292e882b-...`) were both **created by walk-test**, NOT by an
-  operator opting in. Unlike slice 4 — where Sterling's
-  `late_fee_application` row was an intentional production opt-in
-  preserved through cleanup — slice 5's rows are walk-test artifacts.
-  **Recommendation: clean BOTH** in Part 2 (delete both
-  `vendor_insurance_renewal` automations + their runs), leaving slice
-  5 in pure opt-in state with zero enabled orgs. An operator then
-  explicitly opts in whichever orgs should run the cascade. This
-  keeps the "no org runs both handlers yet" runway intact for the
-  §F.2 #3 follow-up slice. (Final decision deferred to plan-author in
-  Part 2.)
-- Kristophers and any other org have no `vendor_insurance_renewal`
-  enabled after cleanup — they remain on the opt-in path.
+- **Walk-test automation-row decision (Part 2 — LOCKED)**: both
+  walk-test-created slice 5 `automations` rows (Sterling `0ca066de-...`
+  + Kristophers `292e882b-...`) were cleaned (§F.5). Sterling is a
+  seed/demo org with no production opt-in to preserve. Slice 5 ships
+  **available-but-enabled-nowhere** — zero orgs have a
+  `vendor_insurance_renewal` row after cleanup. This keeps the "no org
+  runs both handlers yet" runway intact for the §F.2 #3 follow-up
+  slice.
+- An operator explicitly opts in whichever orgs should run the
+  cascade by inserting an `automations` row (per §0.4 #9 / audit
+  §G.6). Until then, the daily `0 6 * * *` cron tick enumerates zero
+  `vendor_insurance_renewal` automations and the handler does no work.
