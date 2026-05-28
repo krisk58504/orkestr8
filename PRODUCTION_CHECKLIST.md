@@ -34,8 +34,14 @@
       executed with every cross-org case denying access.
 - [ ] **Gate 2 — AI/Automation:** `AI_AUTOMATION_SAFETY.md` reviewed; all orgs
       confirmed `ai_mode = 'disabled'` unless explicitly elevated.
-- [ ] **Gate 3 — Email:** `EMAIL_SAFETY.md` reviewed; production email path
-      verified to honor the mode switch.
+- [ ] **Gate 3 — Email:** `EMAIL_SAFETY.md` reviewed. **Code complete +
+      staged gate walk-test-verified 2026-05-28** (deny-by-default two-key
+      production-authorize + per-mode allowlist + explicit open-send; see
+      `EMAIL_SAFETY_PROD_SIGNOFF_AUDIT.md`). Production email is **NOT live** —
+      operator rollout (separate prod Resend key, verified domain +
+      `EMAIL_FROM`, `EMAIL_MODE=production`,
+      `EMAIL_PRODUCTION_SEND_AUTHORIZED=true`, then `EMAIL_OPEN_SEND=true`)
+      per `EMAIL_SAFETY.md` §8 pending.
 - [ ] **Gate 4 — Deployment:** this checklist.
 
 ## 4. Data hygiene

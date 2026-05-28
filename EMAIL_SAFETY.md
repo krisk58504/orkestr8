@@ -114,8 +114,10 @@ Recorded 2026-05-19 as a precondition of the test-mode wiring:
       default; empty = nobody (no fail-open). _(code)_
 - [x] **Open-send flag** `EMAIL_OPEN_SEND` for full launch (deny-by-default).
       _(code — the flag is implemented; SETTING it in prod is the §8 go-live step)_
-- [ ] Verified: with `EMAIL_MODE=test`, no mail reaches non-allowlisted
-      addresses. _(verified by walk-test — run pending)_
+- [x] Verified: with `EMAIL_MODE=test`, no mail reaches non-allowlisted
+      addresses. _(verified by walk-test 2026-05-28: test-mode send to a
+      non-allowlisted address → status='blocked', no provider call;
+      re-confirmed in the Gate-2-reason re-verification)_
 - [ ] Verified sending domain + `EMAIL_FROM` set (real-delivery prerequisite;
       without it the sandbox sender reaches only the verified self address).
       _(operator, §8)_

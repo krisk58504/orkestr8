@@ -486,3 +486,56 @@ Apply on implementation:
    only, no migration).
 6. **NO real email to any non-self address at any point** — §6 hard rule;
    prod+open-non-self asserted at unit level only.
+
+---
+
+## §12 — Walk-test sign-off (2026-05-28)
+
+Staged-rollout re-gate implemented + walk-tested. NO real email reached
+any non-self address at any point (discipline 6 honored).
+
+**Implementation commits (audit-first honored):**
+- `a7fdb15` — audit (standalone, pre-implementation)
+- `7459f74` — config: three deny-by-default parsers
+- `b0070b5` — re-gate `isRecipientAllowed` (removed the production fail-open)
+- `0eff276` — re-gate Gate 3 (two-key production authorize; test unaffected)
+- `21bc4b7` — single-recipient guard comment
+- `6ff2be8` — §8 runbook + §6 checklist delta
+- `9ee3483` — Gate 2 reason string mode-aware (§1 item 2 follow-up)
+
+**Unit truth-table — 37/37 PASS.** Every §3.3 row + the full
+deny-by-default parse battery (`""`/`"TRUE"`/`"1"`/`"yes"`/`"True"`/
+`" true"`/`"true "`/unset → safe; only literal `"true"` enables; allowlist
+unset/empty/whitespace → `[]`). Zero provider contact.
+
+**End-to-end (self-only) — 7/7 PASS.**
+- test → self: `sent` (real send to self). test → non-self: `blocked` (Gate 2), no provider call.
+- prod unauthorized → self: `blocked` "not authorized" (Gate 3 blocks even an allowlisted self).
+- prod authorized + allowlisted → self: `sent` (Gate 2+3 admitted).
+- prod authorized + non-allowlisted → non-self: `blocked` (Gate 2), no provider call.
+
+**prod+open-send non-self** asserted at UNIT level only
+(`isRecipientAllowed(<stranger>) === true`) — never run end-to-end.
+
+**Gate-2 reason re-verification — 7/7 PASS.** test reason cites
+`APPROVED_TEST_EMAILS`; production reason cites `EMAIL_PRODUCTION_ALLOWLIST`
++ `EMAIL_OPEN_SEND` (no longer the stale test-mode text); allowlisted-self
+prod send still `sent`.
+
+**RLS:** no RLS surface touched (config/logic only — no schema, no policy,
+no DB). The cumulative RLS floor (21 suites / 294 assertions) is unaffected
+**by construction** and was not re-run (nothing to regress). Recorded here
+rather than in `RLS_TEST_PLAN.md` because this is an email-gate change, not
+an RLS change — adding an email-gate row to the RLS log would be a category
+mismatch (unlike the Phase 7 slices, which were automation-substrate changes
+the RLS suites cover).
+
+**Checklist state:** §6 "test mode blocks non-allowlisted" closed;
+single-recipient + staged-gate code items closed; operator items (prod key,
+verified domain + `EMAIL_FROM`, `EMAIL_MODE=production`,
+`EMAIL_PRODUCTION_SEND_AUTHORIZED`, `EMAIL_OPEN_SEND`) remain open per §8.
+`PRODUCTION_CHECKLIST.md` Gate-3 row updated to "code complete + staged gate
+verified; operator rollout pending."
+
+**Production status:** code-complete + staged-gate-verified; production email
+**NOT live** (operator rollout per `EMAIL_SAFETY.md` §8).
