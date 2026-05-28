@@ -294,7 +294,172 @@ section (§F.1-§F.6) to this document following slice 4's structure.
 
 ## §F — Slice 5 official sign-off
 
-> **Status**: not yet signed off. This section gets populated
-> post-walk-test with the same shape as slice 4 §F.1-§F.6 (walk-test
-> scenarios, defects, ship-gate posture, audit-commit timing
-> retrospective, fixture cleanup, production readiness).
+### §F.1 — Walk-test scenarios
+
+All ship-gate scenarios from audit §8.0 + §8.2 verified on dev
+(Sterling Property Group seed + Kristophers Apartments for cross-org
+isolation). Each scenario was run as discrete tsx invocations against
+the dev pooler; per-scenario verbatim outcomes are in the session
+transcript.
+
+| # | Scenario | Result | Note |
+|---|---|---|---|
+| Step 0 | Migration apply + 4 schema probes + EXPLAIN ANALYZE + freeze pre-check + RLS baseline | PASS | `20260613000000_..._vendor_documents_expires_on_idx.sql` applied; partial index `(organization_id, expires_on) WHERE expires_on IS NOT NULL` verified; 2 vendor_documents policies (erratum §F.3); slice 1 `vendor_doc_expiry` automation intact; both orgs `automation_freeze=false`; 21/21 RLS baseline |
+| (a) | Cold first run with 4-threshold cascade | PASS | 4 insurance docs at 60/30/14/7 → 4 `automation_runs` rows all `status='ok'`, 4 `email_log` rows with 4 distinct per-threshold subjects matching audit §5.1 verbatim; 1 license doc negative-control filtered out by `document_type='insurance'` (slice 1 picked it up under `vendor_document.expiring` — parallel-handler confirmation) |
+| (b) | Same-day idempotency | PASS | Immediate re-invoke produced 0 new runs / 0 new emails; UNIQUE on `(automation_id, idempotency_key)` blocked all 4 re-INSERTs; original 4 `ok` rows preserved verbatim (timestamps + result jsonb untouched) |
+| (c) | Cross-threshold cascade + idempotency model | PASS | Case A (60-day doc → 180 days out) produced NO new row — filtered at SQL level. Case B (14-day doc → 30-day target) produced a NEW `:30` run row distinct from the original `:14` row — proving the `(doc, threshold)` keying allows a legitimate cross-threshold re-fire. Surfaced the dedup→`failed` mapping (§F.2 #1): Case B's send was `suppressed` by the 10-min email dedup window, which the handler recorded as `status='failed'` |
+| (d) | Threshold-window out-of-bounds NOT eligible | PASS | 75-day insurance doc → 0 `automation_runs` rows (never entered the per-pair loop); `.in("expires_on", targetDateStrings)` excluded it at the org-scoped candidate query; 0 emails across ALL templates |
+| (e) | Threshold-boundary crossing (eligible) | PASS | Aged the scenario (d) 75-day doc to exactly the 60-day target → entered candidates, claimed the open `:60` slot, `status='ok'`, `email_status='sent'`, subject "Insurance renewal due in 60 days — Lone Star Plumbing"; runs 5→6, emails 5→6 |
+| (f) | Non-insurance document_type filtered out | PASS | w9 doc at the 30-day target (clean threshold match) → 0 slice 5 runs (the `document_type='insurance'` filter excluded it); slice 1's generic handler DID email it (`vendor_document.expiring`, "Reminder: w9 expires in 30 days") — confirms the two handlers partition document types correctly |
+| (g) | No resolvable recipient (skip path) | PASS | Insurance doc on a vendor with `email=NULL` + 0 `vendor_contacts` → run row reserved (runs 6→7) then updated to `status='skipped'`, `result.reason='no_recipient'`, no `error_message`; `sendEmail()` never called → 0 `email_log` rows of any template. The key is reserved so daily re-runs don't re-log-skip. **Distinct from the freeze gate** (handler ran and wrote a skip row) **and from suppression** (no send attempted at all) |
+| (h) | Org freeze gate | PASS | Freeze ON → `org_gated=4`, `attempted=0` (runner short-circuits BEFORE handler dispatch — the eligible 14-day doc got NO run row of any kind, distinct from the (g) skip path). Freeze OFF → the previously-gated doc fired cleanly (`:14`, `status='ok'`, runs 7→8). **Sterling left `automation_freeze=false` at scenario end (V5)** — slice 4 §F.4 discipline honored, no stale state into (i) |
+| (i) Layer A | Cross-org: Kristophers without enabled automation | PASS | Kristophers seeded an eligible 30-day insurance doc but had 0 slice 5 automations → `automations_seen=4` (only Sterling's), 0 Kristophers runs, 0 emails (any template); Sterling unchanged at 8. Cron-enumeration isolation |
+| (i) Layer B | Cross-org: both orgs enabled, handler SQL scoping | PASS | Enabled Kristophers's automation → `automations_seen=5`. Kristophers doc's run row attributed to **Kristophers's** automation (`organization_id=c865eb60`), run_count=1. **B.3.V3: Sterling created 0 runs for the Kristophers doc.** **B.3.V4: 100% org-match — every slice 5 run row references a vendor_document in the same org as the run** (Sterling 8/8, Kristophers 1/1). Proves `.eq("organization_id", params.organizationId)` scoping. The Kristophers run landed `status='failed'` because its vendor email `test-vendor@example.com` is off the test allowlist — an allowlist-gate outcome (§F.2 #1), not an isolation defect |
+| (j) | Cumulative RLS regression | PASS | 21 / 21 suites, 294 / 294 cumulative assertions; no slice 5 RLS suite added per audit §6.2 (index-only migration, no row-access surface) |
+
+### §F.2 — Observations + follow-ups (NOT ship-blockers)
+
+No defects in slice 5 production code. Three observations, all
+recommended for a single dedicated follow-up slice (see #3):
+
+**1. Non-delivery → `status='failed'` conflation**
+
+The handler maps **every** non-`delivered` `sendEmail()` outcome to
+`automation_runs.status='failed'` (the `else` branch at
+`vendor-insurance-renewal.ts:179-195`). `sendEmail()` can return
+`delivered=false` for four distinct reasons (`suppressed`,
+`blocked`, `failed`, plus the fail-closed `blocked`-on-unverifiable
+dedup), but the handler collapses all of them to `failed`.
+
+Observed **3×** during walk-test:
+- Scenario (c) Case B — dedup-`suppressed` (an equivalent email was
+  sent <10 min earlier for the same `(to, template, related_entity_id)`)
+- Scenario (i) Layer B — allowlist-`blocked` (Kristophers vendor email
+  off the test allowlist)
+- (the same dedup path also drove the runner's `failed=2` in scenario c
+  when slice 1's parallel handler hit the same suppression on the
+  cross-threshold doc)
+
+**Production impact**: dedup-suppression **WILL** occur in production
+— rapid cron re-runs, cross-threshold expires_on moves, or any
+genuine re-send within the 10-minute window all produce
+`suppressed`. Those will surface as `failed` runs in operator
+dashboards, creating false-alarm noise. (Allowlist-block is
+test-mode-only and won't occur in production.)
+
+**Recommended fix**: granular run-status mapping — `suppressed` and
+`blocked` as distinct `automation_runs.status` values rather than
+`failed`. Likely requires extending the `automation_runs.status`
+CHECK/enum. **Affects both slice 1 (`vendor-doc-expiry.ts`) and
+slice 5 handlers** — they share the identical `if (sendResult.delivered)
+… else { status:'failed' }` shape.
+
+**2. Slice 1 / slice 5 double-email on insurance docs**
+
+Both handlers scan `vendor_documents` and both include
+`document_type='insurance'` docs in their candidate pools (slice 1 is
+generic — no document_type filter; slice 5 is insurance-only). Their
+threshold cascades overlap: slice 1 defaults `[30, 14, 7]`, slice 5
+defaults `[60, 30, 14, 7]` — so 30/14/7 are shared.
+
+For an org running **both** automations, an insurance doc at a shared
+threshold generates **two** emails: one `vendor_document.expiring`
+(slice 1) and one `vendor.insurance_renewal` (slice 5). The email
+dedup does NOT suppress the second because the dedup key includes
+`template`, and the two templates differ — so neither collapses the
+other.
+
+Confirmed structurally in scenario (f) (the w9 doc showed slice 1's
+parallel pickup) and scenario (h) (the 14-day insurance doc produced
+`succeeded=2` — one per handler).
+
+By-design per audit §3.4 (handlers partition by
+`(automation_type, idempotency_key)` — their run-row keys never
+collide), but a **real-world coordination question**: a vendor would
+receive two differently-worded renewal emails for the same cert.
+
+**Recommended fix**: slice 1 gains a `document_type` exclusion config
+(e.g., `exclude_document_types: ['insurance']`) so insurance can be
+delegated to slice 5 when both are opted in. No org runs both today
+(slice 5 is brand-new opt-in), so there's production runway.
+
+**3. Both follow-ups bundle into a single "slice 1 hardening" slice**
+
+Items (1) and (2) are both slice-1-handler-centric, both surfaced
+during slice 5 walk-test, and both have production runway (slice 5 is
+brand-new opt-in; no org runs both handlers yet). Recommend a
+**dedicated follow-up slice** with its own audit + walk-test rather
+than patching either into slice 5:
+- (1) the status-mapping change touches the substrate
+  (`automation_runs.status` domain) + both handlers — substrate
+  changes deserve their own audit
+- (2) the document_type exclusion config touches slice 1's schema +
+  handler — also out of slice 5's scope
+- Bundling avoids two separate small slices that both reopen the
+  vendor-document handlers
+
+### §F.3 — Audit erratum (already committed)
+
+Commit `637cd93` corrected audit §8.0 step 3: `vendor_documents` has
+**2 policies** (`vendor_documents_select` + `vendor_documents_write`,
+per `supabase/migrations/20260519000800_phase2_rls.sql:70+79`), not
+the "4 policies" the audit originally stated. The miscount was an
+authoring error during slice 5 audit drafting; caught and corrected
+after Step 0.3 walk-test verification. Not a regression — slice 5
+added 0 policies; the count went 2 → 2.
+
+### §F.4 — Audit-commit timing (discipline restored)
+
+Slice 5 committed its audit (`c57da82`) **and** the audit polish
+(`b45ed36`) BEFORE any implementation commits began — restoring the
+slice 1/2/3 pre-implementation audit-commit pattern that slice 4 §F.4
+documented breaking (slice 4's audit was forward-committed as
+`63f5df7` after implementation + walk-test had pushed). The slice 4
+anomaly was a one-time session-flow miss; slice 5 reverted to the
+correct ordering. Commit sequence:
+1. `c57da82` — audit (standalone, pre-implementation)
+2. `b45ed36` — audit polish (email wording + scenario c naming)
+3. `b1431bb` — implementation decisions doc
+4. `918382a` — implementation (migration + handler + template + registry)
+5. `0ca1790` — slice 1 variable-shadow back-port (cleanup discovered during review)
+6. `637cd93` — audit erratum (2 policies, §F.3)
+
+### §F.5 — Walk-test fixture cleanup
+
+**Cleanup transaction pending — see Part 2.**
+
+Walk-test seeded fixtures across both orgs that are NOT yet removed:
+- Sterling: ~8 insurance docs (scenarios a/c/d/e/h) + 1 license doc
+  (a) + 1 w9 doc (f) + 1 no-email vendor + its insurance doc (g) +
+  the slice 5 `automations` row + ~8 `automation_runs` rows + ~6
+  `email_log` rows
+- Kristophers: 1 insurance doc (i) + the slice 5 `automations` row +
+  1 `automation_runs` row
+
+The actual deleted-row counts + the Sterling-opt-in-row-persistence
+decision (see §F.6) get filled in here after Part 2 runs.
+
+### §F.6 — Production readiness
+
+**Yes — production-ready.**
+
+- First scheduled run: next `0 6 * * *` UTC cron tick after this push
+  reaches Vercel production.
+- **Opt-in posture honored** (§0.4 #9 / audit §G.6): the handler is
+  registered in the registry but no org gets an auto-seeded
+  `automations` row. Partners explicitly opt in per-org.
+- **Walk-test automation-row decision (Part 2)**: Sterling's slice 5
+  `automations` row (`0ca066de-...`) and Kristophers's
+  (`292e882b-...`) were both **created by walk-test**, NOT by an
+  operator opting in. Unlike slice 4 — where Sterling's
+  `late_fee_application` row was an intentional production opt-in
+  preserved through cleanup — slice 5's rows are walk-test artifacts.
+  **Recommendation: clean BOTH** in Part 2 (delete both
+  `vendor_insurance_renewal` automations + their runs), leaving slice
+  5 in pure opt-in state with zero enabled orgs. An operator then
+  explicitly opts in whichever orgs should run the cascade. This
+  keeps the "no org runs both handlers yet" runway intact for the
+  §F.2 #3 follow-up slice. (Final decision deferred to plan-author in
+  Part 2.)
+- Kristophers and any other org have no `vendor_insurance_renewal`
+  enabled after cleanup — they remain on the opt-in path.
