@@ -85,7 +85,9 @@ async function run(
   let attempted = 0,
     succeeded = 0,
     skipped = 0,
-    failed = 0;
+    failed = 0,
+    suppressed = 0,
+    blocked = 0;
 
   for (const doc of docs ?? []) {
     if (!doc.expires_on) {
@@ -186,12 +188,22 @@ async function run(
         .eq("id", automationRun.id);
       succeeded++;
     } else {
+      // sendEmail() returns delivered=false only with status
+      // 'suppressed' | 'blocked' | 'failed'. All three are valid
+      // automation_runs.status values (slice 6). Record the true reason
+      // instead of collapsing benign non-delivery to 'failed'.
+      const runStatus =
+        sendResult.status === "suppressed" || sendResult.status === "blocked"
+          ? sendResult.status
+          : "failed";
       await admin
         .from("automation_runs")
         .update({
-          status: "failed",
+          status: runStatus,
           ended_at: new Date().toISOString(),
-          error_message: sendResult.reason,
+          // error_message only for a genuine provider error; suppressed/
+          // blocked are not errors (mirror the no-recipient skip's null).
+          error_message: runStatus === "failed" ? sendResult.reason : null,
           result: {
             vendor_id: doc.vendor_id,
             vendor_document_id: doc.id,
@@ -200,11 +212,13 @@ async function run(
           } as never,
         })
         .eq("id", automationRun.id);
-      failed++;
+      if (runStatus === "suppressed") suppressed++;
+      else if (runStatus === "blocked") blocked++;
+      else failed++;
     }
   }
 
-  return { attempted, succeeded, skipped, failed, suppressed: 0, blocked: 0 };
+  return { attempted, succeeded, skipped, failed, suppressed, blocked };
 }
 
 export const vendorDocExpiryHandler: AutomationHandler = {
