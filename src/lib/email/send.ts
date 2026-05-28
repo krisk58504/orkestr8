@@ -63,11 +63,12 @@ export async function sendEmail(
   }
   // dup.kind === "unique" — proceed.
 
-  // --- Gate 2: test-mode recipient allowlist ---
+  // --- Gate 2: recipient allowlist (per-mode, deny-by-default) ---
   if (!isRecipientAllowed(email.to)) {
     const reason =
-      "Blocked — recipient is not on the APPROVED_TEST_EMAILS allowlist " +
-      "and EMAIL_MODE is not 'production'.";
+      mode === "production"
+        ? "Blocked — recipient is not on EMAIL_PRODUCTION_ALLOWLIST and EMAIL_OPEN_SEND is not enabled."
+        : "Blocked — recipient is not on the APPROVED_TEST_EMAILS allowlist and EMAIL_MODE is not 'production'.";
     await logEmailAttempt(email, mode, "blocked", reason);
     return { delivered: false, status: "blocked", mode, reason };
   }
