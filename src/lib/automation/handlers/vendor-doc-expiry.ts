@@ -99,7 +99,10 @@ async function run(
     attempted++;
 
     // Reserve the run slot. UNIQUE constraint blocks duplicates atomically.
-    const { data: run, error: insertError } = await admin
+    // Renamed `data: run` → `data: automationRun` to avoid shadowing
+    // the outer `run` function declared in this file (slice 4 4e5bcde
+    // back-port; slice 5's handler ships with this shape from day one).
+    const { data: automationRun, error: insertError } = await admin
       .from("automation_runs")
       .insert({
         organization_id: params.organizationId,
@@ -109,7 +112,7 @@ async function run(
       })
       .select("id")
       .single();
-    if (insertError || !run) {
+    if (insertError || !automationRun) {
       // UNIQUE collision — this (document, threshold) pair already processed.
       skipped++;
       continue;
@@ -138,7 +141,7 @@ async function run(
             threshold_days: matchedTarget.days,
           } as never,
         })
-        .eq("id", run.id);
+        .eq("id", automationRun.id);
       skipped++;
       continue;
     }
@@ -180,7 +183,7 @@ async function run(
             email_status: sendResult.status,
           } as never,
         })
-        .eq("id", run.id);
+        .eq("id", automationRun.id);
       succeeded++;
     } else {
       await admin
@@ -196,7 +199,7 @@ async function run(
             email_status: sendResult.status,
           } as never,
         })
-        .eq("id", run.id);
+        .eq("id", automationRun.id);
       failed++;
     }
   }
