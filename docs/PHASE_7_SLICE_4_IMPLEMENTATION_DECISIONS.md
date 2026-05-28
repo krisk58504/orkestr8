@@ -253,3 +253,169 @@ EXPLAIN ANALYZE + grace-period boundary + partial-payment-eligible
 
 **STATUS**: decisions documented. Slice 4 implementation proceeds
 against this doc + the audit + §G resolutions.
+
+---
+
+## §F — Slice 4 official sign-off
+
+### §F.1 — Walk-test scenarios
+
+All ship-gate scenarios from audit §8.2 verified on dev (Sterling
+Property Group seed + Kristophers Apartments for cross-org isolation).
+Each scenario was run as discrete tsx invocations; per-scenario
+verbatim outcomes are in the session transcript.
+
+| # | Scenario | Result | Note |
+|---|---|---|---|
+| Step 0 | Migration apply + 4 schema probes + EXPLAIN ANALYZE prep | PASS | `20260612000000_phase7_slice4_rent_charges_parent_charge_id.sql` applied; column + FK (ON DELETE SET NULL) + partial index all present |
+| (a) | Cold first run | PASS | 3 seeded overdue + 2 pre-existing overdue = 5 fees created at $50 verbatim; null-description fallback and partial-payment-stays-eligible bonus-validated |
+| (b) | Same-day outer idempotency | PASS | Re-invoke produced 0 new fees; UNIQUE on `(automation_id, idempotency_key)` blocked the second insert; original run untouched |
+| (c) | Next-day inner anti-join (simulated via DELETE) | PASS | After clearing outer block, new run shows `candidates=5, already_feed=5, eligible_charges=0, fees_created=0`; no duplicate fees per parent |
+| (d) | Grace boundary in-window NOT eligible (4 days overdue, grace=5) | PASS | `candidates=5` not 6 — the in-window seed never entered the pool (strict `<` boundary enforced at SQL filter level) |
+| (e) | Grace boundary crossed (6 days overdue) | PASS | Same parent from (d) aged to 6 days; `candidates=6, eligible_charges=1, fees_created=1`; fee shape correct |
+| (f) | Voided parent NOT eligible | PASS | `candidates` stayed at 6, not 7; status filter excludes 'voided' |
+| (g) | Paid parent NOT eligible | PASS | `candidates` stayed at 6, not 7; status filter excludes 'paid' |
+| (h) | Partial-payment parent STAYS eligible | PASS | `candidates=7, fees_created=1`; partial ≠ paid; parent's `status='partial'` preserved through the fee insert |
+| (i) Layer A | Cross-org: Kristophers without enabled automation | PASS | Kristophers seeded with overdue rent; runner produced 0 fees there, no run row for Kristophers (cron-enumeration isolation) |
+| (i) Layer B | Cross-org: both orgs enabled, handler SQL scoping | PASS (after freeze clear) | Each org's run had its own `candidates` count, zero cross-org parent linkages, fee row org_id matched parent org_id |
+| EXPLAIN | Partial index plan verification | PASS (acceptable contingency) | At Sterling's 61-row scale planner chose Seq Scan over partial index; production scale will flip the planner; documented in §B.1 and audit §9.2.5 |
+| RLS | Cumulative regression | PASS | 21 / 21 suites, 294 / 294 cumulative assertions; no slice 4 RLS suite added per audit §6.4 |
+
+### §F.2 — Defects discovered + observations
+
+No code defects in slice 4 production code. Three observations:
+
+**1. Variable shadow in handler — fixed pre-walk-test**
+
+The local `data: run` destructured from the `automation_runs` insert
+shadowed the outer `async function run(...)`. Caught during
+pre-walk-test cleanup; renamed to `automationRun` in commit
+`4e5bcde`. No behavioral impact; tsc and runtime both unaffected
+before/after.
+
+**2. `automation_freeze` stale on Kristophers — discipline carry-forward**
+
+Scenario (i) Layer B's runner invocation returned `org_gated=1`
+because Kristophers had `automation_freeze=true` from a prior
+walk-test (~1.5 hours earlier, before slice 4 began). This is the
+exact discipline gap slice 3 §F.2 #2 surfaced and slice 4 audit §F.4
+carried forward — pre-flight freeze check belongs in every cross-org
+walk-test. The scenario (i) prompt did not include that check; I
+followed the prompt verbatim and the gate caught it. Operator
+cleared the freeze manually; re-ran B.2/B.3/B.4 cleanly.
+
+- Not a code defect; the freeze gate worked exactly as designed
+- The discipline binds going forward: slice 5 cross-org walk-tests
+  must verify all participating orgs' freeze state in pre-flight
+
+**3. EXPLAIN ANALYZE chose Seq Scan over partial index — documented contingency**
+
+At Sterling's 61 rent_charges (7 fees), the planner correctly
+preferred Seq Scan + Nested Loop with `rent_charges_status_idx` over
+the new partial index. Execution time 0.189ms. This matches audit
+§9.2.5 "acceptable contingency" — partial index waits for
+production-scale data to flip the planner's cost calculus. Not a
+defect, not a regression.
+
+### §F.3 — Ship-gate posture
+
+- [x] Step 0 + all 8 walk-test scenarios + cross-org Layers A & B + EXPLAIN + RLS regression all green
+- [x] RLS regression **21 / 21, 294 / 294 cumulative** (unchanged from slice 3 baseline)
+- [x] `tsc --noEmit` clean
+- [x] `npm run build` clean
+- [x] Slice-4-scope lint clean
+- [x] No new lint regressions
+- [x] All audit decisions pre-locked via §G; no open questions to plan-author at sign-off
+- [x] Variable shadow fix landed pre-walk-test
+- [x] Walk-test fixture cleanup transaction committed (19 rows deleted; Sterling production opt-in row preserved)
+- [x] Decisions document complete (§A-§F)
+
+**Slice 4 ships officially as of 2026-05-27.**
+
+### §F.4 — Audit-commit timing — paper-trail imperfection
+
+Slice 1/2/3 each shipped with the audit document committed as a
+**standalone commit BEFORE implementation** began (slice 1: `89d875f`;
+slice 3: `6185f9a`). Slice 4 broke this pattern — the audit document
+sat untracked on the local filesystem through implementation,
+walk-test, and initial push. It was committed as `63f5df7` AFTER all
+implementation + walk-test commits had landed on origin.
+
+**Cause**: session-flow miss. The implementation prompt ("Audit
+approved. Proceed to implementation per docs/PHASE_7_SLICE_4_AUDIT.md
+§7 file inventory") jumped directly into authoring code files
+without an intermediate "commit the audit" step. The audit file was
+authored and referenced throughout, but never staged.
+
+**Impact**:
+- Functional: zero. The audit was the source of truth throughout;
+  implementation faithfully tracked it.
+- Paper trail: the git history shows implementation commits referencing
+  `docs/PHASE_7_SLICE_4_AUDIT.md §3.3` etc. before that file existed
+  in any pushed commit. A reader walking the history in order would
+  see references to a missing document until reaching `63f5df7`.
+- Reproducibility: a fresh clone at the slice 4 implementation
+  commits (without `63f5df7`) would lack the audit context that the
+  implementation cites.
+
+**Resolution chosen**: forward-commit the audit at `63f5df7` rather
+than rewrite history. Rationale:
+- History rewriting is more disruption than the imperfection is worth
+- The audit content is now in git; the reference is recoverable
+- The §F sign-off (this section) documents the timing for future
+  history-readers
+
+**Discipline carry-forward for slice 5+**: revert to the slice 1/2/3
+pre-implementation audit-commit pattern. Implementation prompts
+should explicitly include a "commit the audit before authoring code"
+step OR the audit-author should commit-on-write rather than waiting
+for the implementation-author's prompt.
+
+### §F.5 — Walk-test fixture cleanup
+
+Slice 4 walk-test seeded 7 Sterling rent_charges (parents) + 1
+Kristophers rent_charge + 1 Kristophers automations row. Plus the
+runner created 8 fee rows (7 in Sterling — 5 against seeded parents +
+2 against pre-existing overdue parents — and 1 in Kristophers).
+
+Cleanup transaction (7 statements, all committed atomically) deleted
+19 rows total:
+- 7 Sterling fees
+- 7 Sterling walk-test parents
+- 1 Kristophers fee
+- 1 Kristophers walk-test parent
+- 1 Kristophers automation_runs row
+- 1 Kristophers automation
+- 1 Sterling automation_runs row (today's idempotency key)
+
+Sterling's production opt-in `late_fee_application` automation row
+(`60393ea0-257c-4350-942b-1fd08cb6ef67`) was deliberately preserved —
+this is the row that the daily `0 6 * * *` UTC cron tick will
+exercise in production. The 2 pre-existing overdue Sterling rent_charges
+(null-description and partial-payment cases) were preserved as well;
+only their walk-test-created fees were cleaned.
+
+Post-cleanup state verified:
+```
+sterling_fees_remaining: 0
+kristophers_fees_remaining: 0
+kristophers_late_fee_automation: 0
+sterling_late_fee_automation: 1 (production opt-in preserved)
+```
+
+### §F.6 — Production readiness
+
+**Yes — production-ready.**
+
+- First scheduled run: next `0 6 * * *` UTC cron tick after this
+  push reaches Vercel production (typically the next morning's run
+  worldwide).
+- Sterling's opt-in row is in place; first production run will
+  process the 2 pre-existing overdue Sterling rent_charges +
+  whatever real rent_charges have crossed the grace window by then.
+- Kristophers and Youngs Apt have no `late_fee_application`
+  enabled — they remain on the opt-in path and will receive no fees
+  until an operator explicitly inserts an `automations` row.
+- The `parent_charge_id` self-FK + partial index landed via
+  migration; partial index is waiting for production-scale data to
+  exercise.
