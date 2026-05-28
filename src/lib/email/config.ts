@@ -82,18 +82,26 @@ export function getProductionAllowlist(): string[] {
 }
 
 /**
- * Whether `address` may receive mail under the current mode.
- * - production: any address is permitted (a human raised the mode).
- * - test: only addresses on the APPROVED_TEST_EMAILS allowlist. Plus-tag
- *   aliases are treated as the same inbox as their base address — a single
- *   allowlist entry covers every +alias of itself.
+ * Whether `address` may receive mail under the current mode (deny-by-default).
+ * - production + EMAIL_OPEN_SEND=true: any address is permitted (full launch —
+ *   the ONLY path to "everyone", and it requires the explicit open-send flag).
+ * - otherwise (test mode, OR production without open-send): allowlist-enforced.
+ *   production uses EMAIL_PRODUCTION_ALLOWLIST; test uses APPROVED_TEST_EMAILS.
+ *   An EMPTY allowlist means NOBODY — an unset allowlist never opens the gate.
+ * Plus-tag aliases are treated as the same inbox as their base address — a
+ * single allowlist entry covers every +alias of itself.
  */
 export function isRecipientAllowed(address: string): boolean {
-  if (getEmailMode() === "production") return true;
+  const mode = getEmailMode();
+  // Full launch: production + explicit open-send → unrestricted. This is the
+  // ONLY path to "everyone", and it requires an affirmative flag (never the
+  // mere absence of an allowlist).
+  if (mode === "production" && isOpenSendEnabled()) return true;
+  // Otherwise allowlist-enforced in BOTH modes. An empty allowlist => nobody.
+  const allowlist =
+    mode === "production" ? getProductionAllowlist() : getApprovedTestEmails();
   const recipientBase = stripPlusTag(normalizeAddress(address));
-  return getApprovedTestEmails()
-    .map(stripPlusTag)
-    .includes(recipientBase);
+  return allowlist.map(stripPlusTag).includes(recipientBase);
 }
 
 /**
